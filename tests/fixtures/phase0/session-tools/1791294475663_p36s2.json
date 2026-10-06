@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "session_id": "1791294475663_p36s2",
+  "source": "vscode",
+  "pid": 80708,
+  "started_at": "2026-10-06T13:47:55.721Z",
+  "exit_code": null,
+  "status": "idle",
+  "interactive": true,
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "cwd": "/Users/shameless/.cline/data/workspaces/chat",
+  "workspace_root": "/Users/shameless/.cline/data/workspaces/chat",
+  "enable_tools": true,
+  "enable_spawn": false,
+  "enable_teams": false,
+  "prompt": "读取 phase0/sample-prompt.txt 的第一行，并告诉我内容。",
+  "metadata": {
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "4.1.22"
+    },
+    "size": 7035,
+    "title": "读取 phase0/sample-prompt.txt 的第一行，并告诉我内容。",
+    "isFavorited": false,
+    "totalCost": 0,
+    "tokensIn": 1181,
+    "tokensOut": 668,
+    "cacheWrites": 0,
+    "cacheReads": 17920,
+    "modelId": "deepseek-v4-flash",
+    "legacyTask": false,
+    "aggregatedAgentsCost": 0,
+    "usage": {
+      "inputTokens": 19101,
+      "outputTokens": 668,
+      "cacheReadTokens": 17920,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    },
+    "aggregateUsage": {
+      "inputTokens": 19101,
+      "outputTokens": 668,
+      "cacheReadTokens": 17920,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    }
+  },
+  "messages_path": "/Users/shameless/.cline/data/sessions/1791294475663_p36s2/1791294475663_p36s2.messages.json"
+}

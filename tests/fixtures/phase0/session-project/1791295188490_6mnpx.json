@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "session_id": "1791295188490_6mnpx",
+  "source": "vscode",
+  "pid": 19720,
+  "started_at": "2026-10-06T13:59:48.545Z",
+  "exit_code": null,
+  "status": "idle",
+  "interactive": true,
+  "provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "cwd": "/Users/shameless/Github/mem",
+  "workspace_root": "/Users/shameless/Github/mem",
+  "enable_tools": true,
+  "enable_spawn": false,
+  "enable_teams": false,
+  "prompt": "读取 phase0/sample-prompt.txt 的第一行，并告诉我内容。",
+  "metadata": {
+    "sessionHistoryOrigin": {
+      "mode": "user",
+      "version": "4.1.22"
+    },
+    "size": 6818,
+    "title": "读取 phase0/sample-prompt.txt 的第一行，并告诉我内容。",
+    "isFavorited": false,
+    "totalCost": 0,
+    "tokensIn": 3383,
+    "tokensOut": 292,
+    "cacheWrites": 0,
+    "cacheReads": 6272,
+    "modelId": "deepseek-v4-flash",
+    "legacyTask": false,
+    "aggregatedAgentsCost": 0,
+    "usage": {
+      "inputTokens": 9655,
+      "outputTokens": 292,
+      "cacheReadTokens": 6272,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    },
+    "aggregateUsage": {
+      "inputTokens": 9655,
+      "outputTokens": 292,
+      "cacheReadTokens": 6272,
+      "cacheWriteTokens": 0,
+      "totalCost": 0
+    }
+  },
+  "messages_path": "/Users/shameless/.cline/data/sessions/1791295188490_6mnpx/1791295188490_6mnpx.messages.json"
+}
