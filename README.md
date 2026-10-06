@@ -3,6 +3,9 @@
 Personal LLM memory for Cline (VS Code). The system records conversations,
 indexes them locally, and later retrieves and injects relevant context.
 
+- macOS setup: `docs/operations.md`
+- Windows setup: `docs/windows.md` (PowerShell hooks, Task Scheduler)
+
 ## Requirements
 
 - Node.js 24 or later. Node 24 provides `node:sqlite` with FTS5 and runs

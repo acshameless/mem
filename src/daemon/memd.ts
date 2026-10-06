@@ -1,4 +1,4 @@
-import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { clineDataDir, hookRawDir, memDbPath, memHome } from '../core/paths.ts';
@@ -27,7 +27,14 @@ export function startDaemon(options: DaemonOptions = {}): () => void {
   mkdirSync(sessionsRoot, { recursive: true });
 
   const log = (...parts: unknown[]) => {
-    console.log(new Date().toISOString(), ...parts);
+    const line = `${new Date().toISOString()} ${parts.map((part) => String(part)).join(' ')}`;
+    console.log(line);
+    try {
+      mkdirSync(join(memHome(), 'logs'), { recursive: true });
+      appendFileSync(join(memHome(), 'logs', 'memd.out.log'), `${line}\n`);
+    } catch {
+      // File logging is best effort.
+    }
   };
 
   function syncAll(reason: string): void {

@@ -351,14 +351,31 @@ function runReview(): void {
   for (const unit of listUnits(db, { status: 'candidate', limit: 10 })) {
     console.log(`  ${unit.id}  ${unit.type} conf=${unit.confidence}  ${unit.statement.slice(0, 80)}`);
   }
-  if (notify && candidateCount > 0 && process.platform === 'darwin') {
-    try {
-      execFileSync('osascript', [
-        '-e',
-        `display notification "${candidateCount} 个记忆候选待审核" with title "mem review"`,
-      ]);
-    } catch {
-      // Notification failure must not fail the command.
+  if (notify && candidateCount > 0) {
+    if (process.platform === 'darwin') {
+      try {
+        execFileSync('osascript', [
+          '-e',
+          `display notification "${candidateCount} 个记忆候选待审核" with title "mem review"`,
+        ]);
+      } catch {
+        // Notification failure must not fail the command.
+      }
+    } else if (process.platform === 'win32') {
+      try {
+        const script =
+          'Add-Type -AssemblyName System.Windows.Forms;' +
+          'Add-Type -AssemblyName System.Drawing;' +
+          '$n=New-Object System.Windows.Forms.NotifyIcon;' +
+          '$n.Icon=[System.Drawing.SystemIcons]::Information;$n.Visible=$true;' +
+          `$n.ShowBalloonTip(5000,'mem review','${candidateCount} 个候选待审核','Info');` +
+          'Start-Sleep -Seconds 6;$n.Dispose()';
+        execFileSync('powershell', ['-NoProfile', '-NonInteractive', '-Command', script], {
+          stdio: 'ignore',
+        });
+      } catch {
+        // Notification failure must not fail the command.
+      }
     }
   }
   db.close();
