@@ -5,6 +5,7 @@ indexes them locally, and later retrieves and injects relevant context.
 
 - macOS setup: `docs/operations.md`
 - Windows setup: `docs/windows.md` (PowerShell hooks, Task Scheduler)
+- One-click install (all platforms): `docs/one-click.md`
 
 ## Requirements
 
