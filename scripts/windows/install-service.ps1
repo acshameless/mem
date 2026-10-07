@@ -1,11 +1,12 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$RepoPath = '',
   [switch]$WithReviewReminder
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $RepoPath) { $RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $node = (Get-Command node -ErrorAction Stop).Source
 $daemon = Join-Path $RepoPath 'src\daemon\memd.ts'
 

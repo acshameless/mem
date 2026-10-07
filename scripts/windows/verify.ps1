@@ -1,9 +1,11 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$RepoPath = '',
   [switch]$ExpectTasks
 )
+
+if (-not $RepoPath) { $RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 
 $ok = $true
 function Check([string]$name, [bool]$condition, [string]$detail = '') {

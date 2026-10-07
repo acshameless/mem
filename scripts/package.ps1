@@ -1,11 +1,12 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$OutputDir = (Join-Path (Resolve-Path (Join-Path $PSScriptRoot '..')).Path 'dist')
+  [string]$OutputDir = ''
 )
 
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
+if (-not $OutputDir) { $OutputDir = Join-Path $root 'dist' }
 $version = (Get-Content (Join-Path $root 'package.json') -Raw | ConvertFrom-Json).version
 $name = "mem-v$version"
 $stage = Join-Path $OutputDir $name

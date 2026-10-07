@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$RepoPath = '',
   [switch]$SkipModel,
   [switch]$SkipService,
   [switch]$WithReviewReminder,
@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $RepoPath) { $RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
 if (-not $nodeCommand) { throw 'Node.js not found. Install Node.js 24+ first.' }
 $nodeVersion = (& node -v).TrimStart('v')

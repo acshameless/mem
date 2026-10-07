@@ -158,7 +158,11 @@ async function runDistill(): Promise<void> {
   const config = loadDistillConfig();
   if (!config.apiKey) {
     console.error(`missing distill.apiKey in ${configPath()}`);
-    console.error('run: bash scripts/configure-model.sh');
+    console.error(
+      process.platform === 'win32'
+        ? 'run: powershell -ExecutionPolicy Bypass -File scripts\\windows\\configure-model.ps1'
+        : 'run: bash scripts/configure-model.sh'
+    );
     process.exit(1);
   }
   const db = open();

@@ -1,10 +1,11 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+  [string]$RepoPath = ''
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $RepoPath) { $RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 $settingsDir = Join-Path $env:USERPROFILE '.cline\data\settings'
 $settingsPath = Join-Path $settingsDir 'cline_mcp_settings.json'
 $node = (Get-Command node -ErrorAction Stop).Source

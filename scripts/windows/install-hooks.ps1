@@ -1,11 +1,12 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-  [string]$RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
+  [string]$RepoPath = '',
   [switch]$Force
 )
 
 $ErrorActionPreference = 'Stop'
+if (-not $RepoPath) { $RepoPath = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path }
 
 function Get-DocumentsPath {
   try {
