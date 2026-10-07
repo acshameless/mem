@@ -91,6 +91,8 @@ Keys: `1-9` / `Tab` switch, `j/k` move, `Enter` submit, `Esc` cancel, `q` quit.
 
 ### Docs
 
+- [Embedding providers](docs/embedding.md) (local EmbeddingGemma first;
+  Google Gemini / Vertex / OpenAI-compatible optional)
 - [One-click deployment](docs/one-click.md)
 - [Operations runbook](docs/operations.md)
 - [Windows guide](docs/windows.md)
@@ -189,6 +191,8 @@ memctl tui --review   # 只看候选审核
 
 ### 文档
 
+- [Embedding 供应商](docs/embedding.md)（本地 EmbeddingGemma 优先；
+  Google Gemini / Vertex / OpenAI 兼容为可选项）
 - [一键部署](docs/one-click.md)
 - [运维手册](docs/operations.md)
 - [Windows 指南](docs/windows.md)

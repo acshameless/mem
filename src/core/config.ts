@@ -27,9 +27,14 @@ export interface InjectionConfig {
 
 export interface EmbeddingConfig {
   enabled: boolean;
+  provider: 'local' | 'openai' | 'google' | 'vertex' | 'custom';
   baseUrl: string;
   model: string;
   apiKey: string;
+  dimensions: number | null;
+  taskType: string | null;
+  project: string | null;
+  location: string | null;
 }
 
 export interface AutoDistillConfig {
@@ -93,11 +98,38 @@ export function loadGenericDir(): string | null {
 
 export function loadEmbeddingConfig(): EmbeddingConfig {
   const embedding = loadConfig().embedding ?? {};
+  const baseUrl = typeof embedding.baseUrl === 'string' ? embedding.baseUrl : '';
+  const inferred: EmbeddingConfig['provider'] = baseUrl.includes('googleapis.com')
+    ? 'google'
+    : /127\.0\.0\.1|localhost/.test(baseUrl)
+      ? 'local'
+      : 'openai';
+  const provider =
+    embedding.provider === 'google' ||
+    embedding.provider === 'vertex' ||
+    embedding.provider === 'local' ||
+    embedding.provider === 'custom' ||
+    embedding.provider === 'openai'
+      ? embedding.provider
+      : inferred;
+  const dimensions = Number(embedding.dimensions);
   return {
     enabled: embedding.enabled === true,
-    baseUrl: typeof embedding.baseUrl === 'string' ? embedding.baseUrl : '',
-    model: typeof embedding.model === 'string' ? embedding.model : '',
+    provider,
+    baseUrl:
+      baseUrl || (provider === 'local' ? 'http://127.0.0.1:11434/v1' : ''),
+    model:
+      typeof embedding.model === 'string' && embedding.model
+        ? embedding.model
+        : provider === 'local'
+          ? 'embeddinggemma-2'
+          : '',
     apiKey: typeof embedding.apiKey === 'string' ? embedding.apiKey : '',
+    dimensions: Number.isFinite(dimensions) && dimensions > 0 ? dimensions : null,
+    taskType: typeof embedding.taskType === 'string' && embedding.taskType ? embedding.taskType : null,
+    project: typeof embedding.project === 'string' && embedding.project ? embedding.project : null,
+    location:
+      typeof embedding.location === 'string' && embedding.location ? embedding.location : 'us-central1',
   };
 }
 

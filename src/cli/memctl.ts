@@ -30,6 +30,8 @@ import { ingestGenericDir } from '../ingest/generic.ts';
 import { codexSessionsRoot, ingestCodexDir } from '../ingest/codex.ts';
 import { loadEmbeddingConfig } from '../core/config.ts';
 import { embedPendingTurns, semanticSearch } from '../embed/embed.ts';
+import { embedTexts } from '../embed/embed.ts';
+import { EMBEDDING_PRESETS } from '../embed/presets.ts';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync as readFile } from 'node:fs';
 import { join } from 'node:path';
@@ -726,12 +728,50 @@ async function runEmbed(): Promise<void> {
     process.exit(1);
   }
   const db = open();
+  if (args.includes('--check')) {
+    const started = performance.now();
+    try {
+      const [vector] = await embedTexts(config, ['mem embedding check'], undefined, 'query');
+      const ms = Math.round(performance.now() - started);
+      console.log(`provider  ${config.provider}  model ${config.model}`);
+      console.log(`endpoint  ${config.baseUrl}`);
+      console.log(`ok        dims=${vector?.length ?? 0}  ${ms}ms`);
+    } catch (error) {
+      console.error(`FAILED    ${String(error).slice(0, 200)}`);
+      process.exitCode = 1;
+    }
+    db.close();
+    return;
+  }
   const result = await embedPendingTurns(db, config, {
     limit: limitArg >= 0 ? Number(args[limitArg + 1]) : undefined,
   });
   db.close();
   console.log(`candidates ${fmt(result.candidates)}`);
   console.log(`embedded   ${fmt(result.embedded)}`);
+}
+
+function runEmbeddingPreset(): void {
+  const name = args[1];
+  const preset = name ? EMBEDDING_PRESETS[name] : undefined;
+  if (!preset) {
+    console.log(`memctl embedding preset <${Object.keys(EMBEDDING_PRESETS).join('|')}>`);
+    return;
+  }
+  const config = loadConfig();
+  const existing = loadEmbeddingConfig();
+  config.embedding = {
+    ...preset,
+    // Keep an already configured secret unless the preset supplies a new one.
+    apiKey: existing.apiKey && !preset.apiKey ? existing.apiKey : preset.apiKey,
+  };
+  saveConfig(config);
+  console.log(`embedding preset: ${name}`);
+  console.log(`  provider ${config.embedding.provider}`);
+  console.log(`  baseUrl  ${config.embedding.baseUrl}`);
+  console.log(`  model    ${config.embedding.model}`);
+  console.log(`  dims     ${config.embedding.dimensions ?? 'model default'}`);
+  console.log('check: memctl embed --check');
 }
 
 async function runSemantic(): Promise<void> {
@@ -867,6 +907,9 @@ switch (command) {
     break;
   case 'embed':
     await runEmbed();
+    break;
+  case 'embedding':
+    runEmbeddingPreset();
     break;
   case 'semantic':
     await runSemantic();

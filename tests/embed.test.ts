@@ -24,9 +24,14 @@ test('embedding pipeline stores vectors and ranks semantically', async () => {
 
   const config: EmbeddingConfig = {
     enabled: true,
+    provider: 'openai',
     baseUrl: 'http://mock.local',
     model: 'mock-embed',
     apiKey: 'test',
+    dimensions: null,
+    taskType: null,
+    project: null,
+    location: null,
   };
   const fetchImpl = (async (_url: string, init: RequestInit) => {
     const body = JSON.parse(String(init.body)) as { input: string[] };

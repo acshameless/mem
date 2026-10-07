@@ -25,7 +25,7 @@ export async function rerankWithEmbeddings(
 ): Promise<RecallRow[]> {
   if (rows.length < 2 || !config.enabled || !config.baseUrl || !config.model) return rows;
   try {
-    const [queryVector] = await embedTexts(config, [query], fetchImpl ?? fetch);
+    const [queryVector] = await embedTexts(config, [query], fetchImpl ?? fetch, 'query');
     if (!queryVector) return rows;
     const getVector = db.prepare('SELECT vector FROM embeddings WHERE turn_id = ?');
     const scored: Array<{ row: RecallRow; score: number }> = [];

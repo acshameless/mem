@@ -2,11 +2,12 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { EmbeddingConfig } from '../core/config.ts';
 
 export type FetchLike = typeof fetch;
+export type EmbedPurpose = 'document' | 'query';
 
-export async function embedTexts(
+async function embedOpenAi(
   config: EmbeddingConfig,
   texts: string[],
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike
 ): Promise<number[][]> {
   const url = `${config.baseUrl.replace(/\/+$/, '')}/embeddings`;
   const response = await fetchImpl(url, {
@@ -15,7 +16,11 @@ export async function embedTexts(
       'Content-Type': 'application/json',
       ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
     },
-    body: JSON.stringify({ model: config.model, input: texts }),
+    body: JSON.stringify({
+      model: config.model,
+      input: texts,
+      ...(config.dimensions ? { dimensions: config.dimensions } : {}),
+    }),
     signal: AbortSignal.timeout(60_000),
   });
   if (!response.ok) {
@@ -24,6 +29,87 @@ export async function embedTexts(
   }
   const json = (await response.json()) as { data?: Array<{ embedding: number[] }> };
   return (json.data ?? []).map((row) => row.embedding);
+}
+
+async function embedGoogle(
+  config: EmbeddingConfig,
+  texts: string[],
+  fetchImpl: FetchLike,
+  purpose: EmbedPurpose
+): Promise<number[][]> {
+  const base = config.baseUrl.replace(/\/+$/, '');
+  const url = `${base}/v1beta/models/${encodeURIComponent(config.model)}:batchEmbedContents`;
+  const taskType = config.taskType ?? (purpose === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT');
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { 'x-goog-api-key': config.apiKey } : {}),
+    },
+    body: JSON.stringify({
+      requests: texts.map((text) => ({
+        model: `models/${config.model}`,
+        content: { parts: [{ text }] },
+        taskType,
+        ...(config.dimensions ? { outputDimensionality: config.dimensions } : {}),
+      })),
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`google embedding ${response.status}: ${detail.slice(0, 200)}`);
+  }
+  const json = (await response.json()) as { embeddings?: Array<{ values: number[] }> };
+  return (json.embeddings ?? []).map((row) => row.values);
+}
+
+async function embedVertex(
+  config: EmbeddingConfig,
+  texts: string[],
+  fetchImpl: FetchLike,
+  purpose: EmbedPurpose
+): Promise<number[][]> {
+  if (!config.project) throw new Error('vertex embedding requires embedding.project');
+  const base = config.baseUrl.replace(/\/+$/, '');
+  const url =
+    `${base}/v1/projects/${config.project}/locations/${config.location}` +
+    `/publishers/google/models/${encodeURIComponent(config.model)}:predict`;
+  const taskType = config.taskType ?? (purpose === 'query' ? 'RETRIEVAL_QUERY' : 'RETRIEVAL_DOCUMENT');
+  const response = await fetchImpl(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
+    },
+    body: JSON.stringify({
+      instances: texts.map((text) => ({ content: text, task_type: taskType })),
+      parameters: {
+        ...(config.dimensions ? { outputDimensionality: config.dimensions } : {}),
+      },
+    }),
+    signal: AbortSignal.timeout(60_000),
+  });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw new Error(`vertex embedding ${response.status}: ${detail.slice(0, 200)}`);
+  }
+  const json = (await response.json()) as {
+    predictions?: Array<{ embeddings?: { values: number[] } }>;
+  };
+  return (json.predictions ?? []).map((row) => row.embeddings?.values ?? []);
+}
+
+export async function embedTexts(
+  config: EmbeddingConfig,
+  texts: string[],
+  fetchImpl: FetchLike = fetch,
+  purpose: EmbedPurpose = 'document'
+): Promise<number[][]> {
+  if (config.provider === 'local') return embedOpenAi(config, texts, fetchImpl);
+  if (config.provider === 'google') return embedGoogle(config, texts, fetchImpl, purpose);
+  if (config.provider === 'vertex') return embedVertex(config, texts, fetchImpl, purpose);
+  return embedOpenAi(config, texts, fetchImpl);
 }
 
 export function storeEmbedding(
@@ -51,7 +137,7 @@ export async function embedPendingTurns(
     .prepare(
       `SELECT t.id, t.session_id, t.text FROM turns t
        LEFT JOIN embeddings e ON e.turn_id = t.id
-       WHERE e.turn_id IS NULL AND t.text IS NOT NULL AND length(t.text) >= 10
+       WHERE e.turn_id IS NULL AND t.text IS NOT NULL AND length(t.text) >= 6
        ORDER BY t.id LIMIT ?`
     )
     .all(Math.max(1, options.limit ?? 200)) as Array<{
@@ -65,7 +151,8 @@ export async function embedPendingTurns(
     const vectors = await embedTexts(
       config,
       batch.map((row) => row.text.slice(0, 2000)),
-      options.fetchImpl
+      options.fetchImpl,
+      'document'
     );
     batch.forEach((row, batchIndex) => {
       const vector = vectors[batchIndex];
@@ -106,7 +193,7 @@ export async function semanticSearch(
   query: string,
   options: { limit?: number; fetchImpl?: FetchLike } = {}
 ): Promise<SemanticHit[]> {
-  const [queryVector] = await embedTexts(config, [query], options.fetchImpl);
+  const [queryVector] = await embedTexts(config, [query], options.fetchImpl, 'query');
   if (!queryVector) return [];
   const rows = db
     .prepare(

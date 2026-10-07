@@ -29,9 +29,14 @@ test('embedding rerank reorders FTS candidates', async () => {
 
   const config: EmbeddingConfig = {
     enabled: true,
+    provider: 'openai',
     baseUrl: 'http://mock.local',
     model: 'mock',
     apiKey: 'test',
+    dimensions: null,
+    taskType: null,
+    project: null,
+    location: null,
   };
   const fetchImpl = (async () =>
     new Response(JSON.stringify({ data: [{ embedding: [1, 0] }] }), {
