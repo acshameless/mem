@@ -91,6 +91,13 @@ Keys: `1-9` / `Tab` switch, `j/k` move, `Enter` submit, `Esc` cancel, `q` quit.
 
 ### Docs
 
+- [Feature inventory](docs/features.md)
+- [Architecture & internals](docs/architecture.md)
+- [Data model](docs/data-model.md)
+- [CLI reference](docs/cli.md)
+- [MCP tools](docs/mcp.md)
+- [TUI reference](docs/tui.md)
+- [Development guide](docs/development.md)
 - [Embedding providers](docs/embedding.md) (local EmbeddingGemma first;
   Google Gemini / Vertex / OpenAI-compatible optional)
 - [One-click deployment](docs/one-click.md)
@@ -191,6 +198,13 @@ memctl tui --review   # 只看候选审核
 
 ### 文档
 
+- [功能总览](docs/features.md)
+- [架构与内部机制](docs/architecture.md)
+- [数据模型](docs/data-model.md)
+- [CLI 参考](docs/cli.md)
+- [MCP 工具](docs/mcp.md)
+- [TUI 参考](docs/tui.md)
+- [开发指南](docs/development.md)
 - [Embedding 供应商](docs/embedding.md)（本地 EmbeddingGemma 优先；
   Google Gemini / Vertex / OpenAI 兼容为可选项）
 - [一键部署](docs/one-click.md)
