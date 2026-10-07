@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { segmentedQueryTerms } from './tokenize.ts';
 
 export interface RecallRow {
+  id: number;
   session_id: string;
   turn_index: number;
   role: string | null;
@@ -25,6 +26,10 @@ export interface CardRow {
   goal: string | null;
   outcome: string | null;
   tools_json: string | null;
+  summary: string | null;
+  decisions_json: string | null;
+  open_questions_json: string | null;
+  lessons_json: string | null;
   workspace_root: string | null;
   started_at: string | null;
 }
@@ -90,7 +95,7 @@ export function searchTurns(
     try {
       const rows = db
         .prepare(
-          `SELECT ${SELECT_COLUMNS.replace('%SNIP%', 'substr(t.text, 1, 400)')}
+          `SELECT t.id AS id, ${SELECT_COLUMNS.replace('%SNIP%', 'substr(t.text, 1, 400)')}
            FROM turns_fts_seg
            JOIN turns t ON t.id = turns_fts_seg.rowid
            LEFT JOIN sessions s ON s.session_id = t.session_id
@@ -119,7 +124,7 @@ export function searchTurns(
     try {
       const rows = db
         .prepare(
-          `SELECT ${SELECT_COLUMNS.replace('%SNIP%', "snippet(turns_fts, 0, '', '', '...', 20)")}
+          `SELECT t.id AS id, ${SELECT_COLUMNS.replace('%SNIP%', "snippet(turns_fts, 0, '', '', '...', 20)")}
            FROM turns_fts
            JOIN turns t ON t.id = turns_fts.rowid
            LEFT JOIN sessions s ON s.session_id = t.session_id
@@ -146,7 +151,7 @@ export function searchTurns(
 
   // Fallback for CJK phrases and partial matches that unicode61 does not segment.
   const likeStatement = db.prepare(
-    `SELECT ${SELECT_COLUMNS.replace('%SNIP%', 'substr(t.text, 1, 400)')}
+    `SELECT t.id AS id, ${SELECT_COLUMNS.replace('%SNIP%', 'substr(t.text, 1, 400)')}
      FROM turns t
      LEFT JOIN sessions s ON s.session_id = t.session_id
      WHERE t.text LIKE ?
@@ -187,7 +192,9 @@ export function searchCards(
     try {
       const rows = db
         .prepare(
-          `SELECT c.session_id, c.goal, c.outcome, c.tools_json, s.workspace_root, s.started_at
+          `SELECT c.session_id, c.goal, c.outcome, c.tools_json, c.summary,
+                  c.decisions_json, c.open_questions_json, c.lessons_json,
+                  s.workspace_root, s.started_at
            FROM session_cards_fts_seg
            JOIN session_cards c ON c.rowid = session_cards_fts_seg.rowid
            LEFT JOIN sessions s ON s.session_id = c.session_id
@@ -217,7 +224,9 @@ export function searchCards(
     try {
       const rows = db
         .prepare(
-          `SELECT c.session_id, c.goal, c.outcome, c.tools_json, s.workspace_root, s.started_at
+          `SELECT c.session_id, c.goal, c.outcome, c.tools_json, c.summary,
+                  c.decisions_json, c.open_questions_json, c.lessons_json,
+                  s.workspace_root, s.started_at
            FROM session_cards_fts
            JOIN session_cards c ON c.rowid = session_cards_fts.rowid
            LEFT JOIN sessions s ON s.session_id = c.session_id
@@ -244,7 +253,9 @@ export function searchCards(
 
   try {
     const likeStatement = db.prepare(
-      `SELECT c.session_id, c.goal, c.outcome, c.tools_json, s.workspace_root, s.started_at
+      `SELECT c.session_id, c.goal, c.outcome, c.tools_json, c.summary,
+              c.decisions_json, c.open_questions_json, c.lessons_json,
+              s.workspace_root, s.started_at
        FROM session_cards c
        LEFT JOIN sessions s ON s.session_id = c.session_id
        WHERE (c.goal LIKE ? OR c.outcome LIKE ?)

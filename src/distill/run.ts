@@ -2,7 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import type { DistillConfig } from '../core/config.ts';
 import { redactSecrets } from '../core/redact.ts';
 import { findSimilarUnit, insertUnit } from '../core/units.ts';
-import { buildDistillMessages, parseUnits } from './prompt.ts';
+import { buildDistillMessages, parseDistillResult } from './prompt.ts';
 import type { ActiveUnit } from './prompt.ts';
 import { chatComplete, type FetchLike } from './provider.ts';
 
@@ -146,7 +146,26 @@ export async function distillSessions(
       const messages = buildDistillMessages(bundle, activeUnits);
       const result = await chatComplete(config, messages, options.fetchImpl ?? fetch);
       if (result.usage) summary.usage.push(result.usage);
-      const units = parseUnits(result.text);
+      const { units, session: sessionSummary } = parseDistillResult(result.text);
+      if (sessionSummary && !options.dryRun) {
+        db.prepare(
+          `INSERT INTO session_cards
+             (session_id, summary, decisions_json, open_questions_json, lessons_json, generated_by, generated_at)
+           VALUES (?, ?, ?, ?, ?, 'llm', ?)
+           ON CONFLICT(session_id) DO UPDATE SET
+             summary=excluded.summary, decisions_json=excluded.decisions_json,
+             open_questions_json=excluded.open_questions_json,
+             lessons_json=excluded.lessons_json,
+             generated_by='llm', generated_at=excluded.generated_at`
+        ).run(
+          session.session_id,
+          sessionSummary.summary,
+          JSON.stringify(sessionSummary.decisions),
+          JSON.stringify(sessionSummary.openQuestions),
+          JSON.stringify(sessionSummary.lessons),
+          new Date().toISOString(),
+        );
+      }
       let created = 0;
       for (const unit of units) {
         if (unit.relation === 'duplicate') {

@@ -223,7 +223,7 @@ export function topPersonUnits(db: DatabaseSync, limit = 2): MemoryUnitRow[] {
         `SELECT id, type, statement, detail, scope, confidence, status, created_at
          FROM memory_units
          WHERE status = 'active' AND scope = 'person'
-         ORDER BY confidence DESC, id DESC LIMIT ?`
+         ORDER BY pinned DESC, confidence DESC, id DESC LIMIT ?`
       )
       .all(limit) as MemoryUnitRow[];
   } catch {
@@ -255,6 +255,80 @@ export function applyFeedback(
     'INSERT INTO unit_feedback (unit_id, signal, note, created_at) VALUES (?, ?, ?, ?)'
   ).run(unitId, signal, note ?? null, now);
   return { confidence, status };
+}
+
+export function updateUnit(
+  db: DatabaseSync,
+  id: number,
+  fields: { statement?: string; detail?: string | null; scope?: string; type?: string }
+): boolean {
+  const current = db
+    .prepare('SELECT statement, detail, scope, type FROM memory_units WHERE id = ?')
+    .get(id) as { statement: string; detail: string | null; scope: string; type: string } | undefined;
+  if (!current) return false;
+  const statement = fields.statement ?? current.statement;
+  const detail = fields.detail === undefined ? current.detail : fields.detail;
+  const scope = fields.scope ?? current.scope;
+  const type = fields.type ?? current.type;
+  db.prepare(
+    `UPDATE memory_units SET statement = ?, statement_seg = ?, detail = ?, detail_seg = ?,
+       scope = ?, type = ?, updated_at = ? WHERE id = ?`
+  ).run(
+    statement,
+    segmentForSearch(statement),
+    detail,
+    detail ? segmentForSearch(detail) : null,
+    scope,
+    type,
+    new Date().toISOString(),
+    id
+  );
+  return true;
+}
+
+export function mergeUnits(db: DatabaseSync, keepId: number, mergeId: number): boolean {
+  const keep = db
+    .prepare('SELECT id, statement, detail, evidence_json FROM memory_units WHERE id = ?')
+    .get(keepId) as
+    | { id: number; statement: string; detail: string | null; evidence_json: string | null }
+    | undefined;
+  const merge = db
+    .prepare('SELECT id, statement, detail, evidence_json FROM memory_units WHERE id = ?')
+    .get(mergeId) as
+    | { id: number; statement: string; detail: string | null; evidence_json: string | null }
+    | undefined;
+  if (!keep || !merge) return false;
+  const statements = [keep.statement, merge.statement].filter(Boolean);
+  const details = [keep.detail, merge.detail].filter((value): value is string => !!value);
+  const evidence = [
+    ...(JSON.parse(keep.evidence_json ?? '[]') as unknown[]),
+    ...(JSON.parse(merge.evidence_json ?? '[]') as unknown[]),
+  ];
+  const statement = statements.join(' / ');
+  const detail = details.length > 0 ? details.join('\n') : null;
+  db.prepare(
+    `UPDATE memory_units SET statement = ?, statement_seg = ?, detail = ?, detail_seg = ?,
+       evidence_json = ?, updated_at = ? WHERE id = ?`
+  ).run(
+    statement,
+    segmentForSearch(statement),
+    detail,
+    detail ? segmentForSearch(detail) : null,
+    JSON.stringify(evidence),
+    new Date().toISOString(),
+    keepId
+  );
+  db.prepare(
+    `UPDATE memory_units SET status = 'superseded', superseded_by = ?, updated_at = ? WHERE id = ?`
+  ).run(keepId, new Date().toISOString(), mergeId);
+  return true;
+}
+
+export function setPinned(db: DatabaseSync, id: number, pinned: boolean): boolean {
+  const result = db
+    .prepare('UPDATE memory_units SET pinned = ?, updated_at = ? WHERE id = ?')
+    .run(pinned ? 1 : 0, new Date().toISOString(), id);
+  return Number(result.changes ?? 0) > 0;
 }
 
 // Refresh usage counters from the injection log.

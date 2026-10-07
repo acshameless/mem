@@ -13,7 +13,11 @@ import { loadAutoDistillConfig, loadConfig, saveConfig } from '../core/config.ts
 import { distillSessions } from '../distill/run.ts';
 import { listUnits, setUnitStatus } from '../core/units.ts';
 import { decayStaleUnits, updateUnitUsage } from '../core/units.ts';
+import { mergeUnits, setPinned, updateUnit } from '../core/units.ts';
 import { activateSkill, draftSkill, recordSkillOutcome } from '../skills/build.ts';
+import { exportStore, importStore } from '../core/portable.ts';
+import { redactRawStore, scanStore } from '../core/scan.ts';
+import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
 import { listAdapters } from '../adapters/index.ts';
@@ -21,6 +25,7 @@ import { ingestInjectionDir } from '../ingest/injections.ts';
 import { forgetSession, forgetUnit } from '../core/forget.ts';
 import { loadGenericDir } from '../core/config.ts';
 import { ingestGenericDir } from '../ingest/generic.ts';
+import { codexSessionsRoot, ingestCodexDir } from '../ingest/codex.ts';
 import { loadEmbeddingConfig } from '../core/config.ts';
 import { embedPendingTurns, semanticSearch } from '../embed/embed.ts';
 import { execFileSync } from 'node:child_process';
@@ -47,6 +52,7 @@ function runImport(): void {
   const injections = ingestInjectionDir(db, `${memHome()}/raw/injections`);
   const genericDir = loadGenericDir();
   const generic = genericDir ? ingestGenericDir(db, genericDir) : 0;
+  const codex = ingestCodexDir(db, codexSessionsRoot());
   const linked = correlateSessions(db);
   const merged = mergeHookToolDurations(db);
   console.log(`db        ${memDbPath()}`);
@@ -56,6 +62,7 @@ function runImport(): void {
   console.log(`cards     ${fmt(cards)} session cards generated`);
   console.log(`injects   ${fmt(injections.records)} injection records imported`);
   if (genericDir) console.log(`generic   ${fmt(generic)} sessions imported from ${genericDir}`);
+  console.log(`codex     ${fmt(codex)} sessions imported from ${codexSessionsRoot()}`);
   console.log(`linked    ${fmt(linked)} sessions correlated to hook tasks`);
   console.log(`tools     ${fmt(merged)} tool calls enriched with hook durations`);
   db.close();
@@ -229,8 +236,37 @@ function runUnits(): void {
           : 'profile unchanged'
       );
     }
+  } else if (sub === 'edit') {
+    const id = Number(args[1]);
+    const valueOf = (flag: string) => {
+      const index = args.indexOf(flag);
+      return index >= 0 ? args[index + 1] : undefined;
+    };
+    if (!Number.isInteger(id)) {
+      console.error('usage: memctl units edit <id> [--statement ...] [--detail ...] [--scope ...] [--type ...]');
+      process.exit(2);
+    }
+    const ok = updateUnit(db, id, {
+      statement: valueOf('--statement'),
+      detail: valueOf('--detail'),
+      scope: valueOf('--scope'),
+      type: valueOf('--type'),
+    });
+    console.log(ok ? `unit ${id} updated` : `unit ${id} not found`);
+    if (ok) writeProfileSnapshot(db);
+  } else if (sub === 'merge') {
+    const keepId = Number(args[1]);
+    const mergeId = Number(args[2]);
+    const ok = mergeUnits(db, keepId, mergeId);
+    console.log(ok ? `unit ${mergeId} merged into ${keepId}` : 'merge failed: unit not found');
+    if (ok) writeProfileSnapshot(db);
+  } else if (sub === 'pin' || sub === 'unpin') {
+    const id = Number(args[1]);
+    const ok = setPinned(db, id, sub === 'pin');
+    console.log(ok ? `unit ${id} ${sub === 'pin' ? 'pinned' : 'unpinned'}` : `unit ${id} not found`);
+    if (ok) writeProfileSnapshot(db);
   } else {
-    console.log('memctl units <list|approve|reject>');
+    console.log('memctl units <list|approve|reject|edit|merge|pin|unpin>');
   }
   db.close();
 }
@@ -395,6 +431,80 @@ function runSources(): void {
   }
 }
 
+function runCard(): void {
+  const sessionId = args[0];
+  if (!sessionId) {
+    console.error('usage: memctl card <sessionId>');
+    process.exit(2);
+  }
+  const db = open();
+  const card = db
+    .prepare('SELECT * FROM session_cards WHERE session_id = ?')
+    .get(sessionId) as Record<string, any> | undefined;
+  if (!card) {
+    console.log('no card for this session');
+  } else {
+    console.log(`session   ${card.session_id}`);
+    console.log(`goal      ${card.goal ?? ''}`);
+    console.log(`outcome   ${card.outcome ?? ''}`);
+    console.log(`tools     ${card.tools_json ?? ''}`);
+    console.log(`summary   ${card.summary ?? '(heuristic only)'}`);
+    console.log(`decisions ${card.decisions_json ?? '[]'}`);
+    console.log(`open      ${card.open_questions_json ?? '[]'}`);
+    console.log(`lessons   ${card.lessons_json ?? '[]'}`);
+    console.log(`source    ${card.generated_by ?? 'heuristic'}`);
+  }
+  db.close();
+}
+
+function runScan(): void {
+  const home = memHome();
+  const db = open();
+  const result = scanStore(db, home);
+  console.log(`raw files scanned   ${fmt(result.filesScanned)}`);
+  console.log(`files with secrets  ${fmt(result.filesWithSecrets.length)}`);
+  console.log(`raw lines affected  ${fmt(result.rawMatches)}`);
+  console.log(`turns with secrets  ${fmt(result.turnMatches)} (derived; redacted at injection/distill time)`);
+  for (const file of result.filesWithSecrets.slice(0, 10)) console.log(`  ${file}`);
+  if (args.includes('--redact-raw')) {
+    if (!args.includes('--yes')) {
+      console.log('add --yes to rewrite raw hook/injection files with [REDACTED]');
+    } else {
+      const redacted = redactRawStore(home);
+      console.log(`redacted ${fmt(redacted.lines)} lines in ${fmt(redacted.files)} files`);
+    }
+  }
+  db.close();
+}
+
+function runTaskPrefs(): void {
+  const sub = args[0] ?? 'list';
+  const db = open();
+  if (sub === 'on' || sub === 'off' || sub === 'capture-on' || sub === 'capture-off') {
+    const taskId = args[1];
+    if (!taskId) {
+      console.error(`usage: memctl ${sub} <taskId>`);
+      process.exit(2);
+    }
+    if (sub === 'on' || sub === 'off') {
+      setTaskPref(db, taskId, { memory: sub === 'on' });
+      console.log(`task ${taskId} memory ${sub === 'on' ? 'enabled' : 'disabled'}`);
+    } else {
+      setTaskPref(db, taskId, { capture: sub === 'capture-on' });
+      console.log(`task ${taskId} capture ${sub === 'capture-on' ? 'enabled' : 'disabled'}`);
+    }
+  } else if (sub === 'list') {
+    for (const pref of listTaskPrefs(db)) {
+      console.log(
+        `${pref.task_id}  memory=${pref.memory_enabled ? 'on' : 'off'}  capture=${pref.capture_enabled ? 'on' : 'off'}  ${pref.updated_at ?? ''}`
+      );
+    }
+  } else {
+    console.log('memctl <on|off|capture-on|capture-off> <taskId> | memctl tasks');
+  }
+  db.close();
+}
+
 function runForget(): void {
   const sub = args[0];
   const db = open();
@@ -538,6 +648,31 @@ function runDecay(): void {
   db.close();
   console.log(`decayed ${fmt(decayed)} units older than ${days} days with no usage`);
   console.log(profile.changed ? `profile updated -> ${profile.path}` : 'profile unchanged');
+}
+
+function runPortable(): void {
+  const sub = args[0];
+  const db = open();
+  if (sub === 'export') {
+    const outArg = args.indexOf('--out');
+    const outDir = outArg >= 0 ? args[outArg + 1] : join(memHome(), 'exports', `mem-${Date.now()}`);
+    const result = exportStore(db, outDir, { includeRaw: args.includes('--raw') });
+    console.log(`exported  units=${result.units} cards=${result.cards} skills=${result.skills} profiles=${result.profiles}`);
+    console.log(`dir       ${result.dir}`);
+    console.log(`hash      ${result.hash}`);
+    console.log('note      config.json and API keys are never exported');
+  } else if (sub === 'import') {
+    const dir = args[1];
+    if (!dir) {
+      console.error('usage: memctl import <exportDir>');
+      process.exit(2);
+    }
+    const result = importStore(db, dir);
+    console.log(`imported  units=${result.units} skipped=${result.skipped} cards=${result.cards} skills=${result.skills} profiles=${result.profiles}`);
+  } else {
+    console.log('memctl export --out <dir> [--raw] | memctl import <dir>');
+  }
+  db.close();
 }
 
 async function runSkills(): Promise<void> {
@@ -693,6 +828,19 @@ switch (command) {
   case 'sources':
     runSources();
     break;
+  case 'card':
+    runCard();
+    break;
+  case 'scan':
+    runScan();
+    break;
+  case 'on':
+  case 'off':
+  case 'capture-on':
+  case 'capture-off':
+  case 'tasks':
+    runTaskPrefs();
+    break;
   case 'forget':
     runForget();
     break;
@@ -713,6 +861,10 @@ switch (command) {
     break;
   case 'skills':
     await runSkills();
+    break;
+  case 'export':
+  case 'import':
+    runPortable();
     break;
   default:
     console.log('memctl <import|status|sessions|search|tools>');

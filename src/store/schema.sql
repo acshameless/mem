@@ -100,6 +100,11 @@ CREATE TABLE IF NOT EXISTS session_cards (
   tools_json TEXT,
   files_json TEXT,
   errors_json TEXT,
+  summary TEXT,
+  decisions_json TEXT,
+  open_questions_json TEXT,
+  lessons_json TEXT,
+  generated_by TEXT,
   generated_at TEXT
 );
 
@@ -162,6 +167,7 @@ CREATE TABLE IF NOT EXISTS memory_units (
   created_at TEXT,
   updated_at TEXT,
   use_count INTEGER DEFAULT 0,
+  pinned INTEGER DEFAULT 0,
   positive_feedback INTEGER DEFAULT 0,
   negative_feedback INTEGER DEFAULT 0,
   supersedes_id INTEGER,
@@ -286,4 +292,11 @@ CREATE TABLE IF NOT EXISTS blobs (
   size INTEGER NOT NULL,
   path TEXT NOT NULL,
   created_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS task_prefs (
+  task_id TEXT PRIMARY KEY,
+  memory_enabled INTEGER NOT NULL DEFAULT 1,
+  capture_enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT
 );

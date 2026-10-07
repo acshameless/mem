@@ -17,6 +17,12 @@ export interface MemConfig {
   autoDistill?: Partial<AutoDistillConfig>;
   sources?: { genericJsonl?: { dir?: string } };
   embedding?: Partial<EmbeddingConfig>;
+  injection?: Partial<InjectionConfig>;
+}
+
+export interface InjectionConfig {
+  budgetChars: number;
+  useEmbeddings: boolean;
 }
 
 export interface EmbeddingConfig {
@@ -92,5 +98,22 @@ export function loadEmbeddingConfig(): EmbeddingConfig {
     baseUrl: typeof embedding.baseUrl === 'string' ? embedding.baseUrl : '',
     model: typeof embedding.model === 'string' ? embedding.model : '',
     apiKey: typeof embedding.apiKey === 'string' ? embedding.apiKey : '',
+  };
+}
+
+export function loadInjectionConfig(): InjectionConfig {
+  const injection = loadConfig().injection ?? {};
+  const envBudget = Number(process.env.MEM_BLOCK_CHARS);
+  return {
+    budgetChars: Math.max(
+      500,
+      Math.min(
+        6000,
+        Number.isFinite(envBudget) && envBudget > 0
+          ? envBudget
+          : Number(injection.budgetChars ?? 3000)
+      )
+    ),
+    useEmbeddings: injection.useEmbeddings === true,
   };
 }

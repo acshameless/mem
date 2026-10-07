@@ -5,6 +5,9 @@ import { DatabaseSync } from 'node:sqlite';
 import { memDbPath, memHome } from '../core/paths.ts';
 import { escapeXml, searchCards, searchTurns, type CardRow, type RecallRow } from '../core/recall.ts';
 import { searchUnits, topPersonUnits, type MemoryUnitRow } from '../core/units.ts';
+import { loadEmbeddingConfig, loadInjectionConfig } from '../core/config.ts';
+import { rerankWithEmbeddings } from '../core/rerank.ts';
+import { isCaptureEnabled, isMemoryEnabled } from '../core/prefs.ts';
 
 function stripUserInput(prompt: string): string {
   return prompt
@@ -145,6 +148,7 @@ function renderMemoryBlock(
       (goal ? `      <goal>${escapeXml(goal)}</goal>\n` : '') +
       (outcome ? `      <outcome>${escapeXml(outcome)}</outcome>\n` : '') +
       (tools ? `      <tools>${escapeXml(tools)}</tools>\n` : '') +
+      renderCardExtras(card) +
       '    </card>';
     if (used + entry.length > options.budgetChars && used > 0) break;
     cardEntries.push(entry);
@@ -219,6 +223,28 @@ function renderMemoryBlock(
     cardCount: cardEntries.length,
     turnCount: entries.length,
   };
+}
+
+function renderCardExtras(card: CardRow): string {
+  const lines: string[] = [];
+  if (card.summary) {
+    lines.push(`      <summary>${escapeXml(String(card.summary).slice(0, 300))}</summary>`);
+  }
+  const list = (raw: string | null, tag: string, limit = 5) => {
+    if (!raw) return;
+    try {
+      const items = (JSON.parse(raw) as unknown[]).slice(0, limit);
+      if (items.length > 0) {
+        lines.push(`      <${tag}>${escapeXml(items.map((item) => String(item)).join('；'))}</${tag}>`);
+      }
+    } catch {
+      // Ignore malformed lists.
+    }
+  };
+  list(card.decisions_json, 'decisions');
+  list(card.open_questions_json, 'open-questions');
+  list(card.lessons_json, 'lessons');
+  return lines.length > 0 ? `${lines.join('\n')}\n` : '';
 }
 
 async function readStdin(): Promise<string> {
@@ -296,7 +322,6 @@ const input = await readStdin();
 
 try {
   const payload = JSON.parse(input || '{}') as Record<string, any>;
-  captureRaw(payload);
   const rawPrompt = String(payload.userPromptSubmit?.prompt ?? '');
   const prompt = stripUserInput(rawPrompt);
   const workspace =
@@ -304,24 +329,43 @@ try {
       ? String(payload.workspaceRoots[0])
       : null;
   const taskId = typeof payload.taskId === 'string' ? payload.taskId : null;
+  const dbPath = memDbPath();
+  let prefDb: DatabaseSync | null = null;
+  if (existsSync(dbPath)) {
+    try {
+      prefDb = new DatabaseSync(dbPath, { readOnly: true });
+    } catch {
+      prefDb = null;
+    }
+  }
+  const captureRequested =
+    !prompt.includes('@nomem-capture') && (prefDb ? isCaptureEnabled(prefDb, taskId) : true);
+  if (captureRequested) captureRaw(payload);
+  const memoryRequested =
+    !prompt.includes('@nomem') && (prefDb ? isMemoryEnabled(prefDb, taskId) : true);
   const timestampMs =
     payload.timestamp != null && Number.isFinite(Number(payload.timestamp))
       ? Number(payload.timestamp)
       : null;
-  const budgetChars = Math.max(500, Math.min(6000, Number(process.env.MEM_BLOCK_CHARS ?? 3000) || 3000));
+  const injectionConfig = loadInjectionConfig();
+  const embeddingConfig = loadEmbeddingConfig();
+  const budgetChars = injectionConfig.budgetChars;
 
   let rendered = { block: '', sections: [] as string[], unitIds: [] as number[], cardCount: 0, turnCount: 0 };
   let currentSessionId: string | null = null;
-  if (prompt && existsSync(memDbPath())) {
-    const db = new DatabaseSync(memDbPath(), { readOnly: true });
+  if (prompt && memoryRequested && prefDb) {
+    const db = prefDb;
     try {
       currentSessionId = resolveCurrentSession(db, { taskId, timestampMs, workspace });
-      const rows = searchTurns(db, prompt, {
+      let rows = searchTurns(db, prompt, {
         limit: 8,
         workspace,
         excludeHookTaskId: taskId,
         excludeSessionId: currentSessionId,
       });
+      if (injectionConfig.useEmbeddings && embeddingConfig.enabled) {
+        rows = await rerankWithEmbeddings(db, rows, prompt, embeddingConfig);
+      }
       const cards = searchCards(db, prompt, {
         limit: 3,
         workspace,
@@ -336,6 +380,7 @@ try {
       rendered = renderMemoryBlock([...unitMap.values()], cards, rows, { workspace, budgetChars });
     } finally {
       db.close();
+      prefDb = null;
     }
   }
   writeResult(rendered.block);

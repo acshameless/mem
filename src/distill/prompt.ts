@@ -11,6 +11,13 @@ export interface ParsedUnit {
   targetId: number | null;
 }
 
+export interface SessionSummary {
+  summary: string;
+  decisions: string[];
+  openQuestions: string[];
+  lessons: string[];
+}
+
 export interface ActiveUnit {
   id: number;
   type: string;
@@ -41,7 +48,7 @@ const SYSTEM_PROMPT = `你是个人记忆蒸馏器。阅读用户与 AI 的对�
 - 没有可提取内容时返回空数组。
 
 只输出 JSON，格式如下：
-{"units":[{"type":"taste","statement":"...","detail":"...","scope":"person","confidence":0.8,"relation":"new","target_id":null,"evidence":[{"quote":"..."}]}]}`;
+{"units":[...],"session":{"summary":"本次任务的一句话总结","decisions":["..."],"open_questions":["..."],"lessons":["..."]}}`;
 
 export function buildDistillMessages(bundle: string, activeUnits: ActiveUnit[] = []): ChatMessage[] {
   const activeBlock =
@@ -59,14 +66,21 @@ export function buildDistillMessages(bundle: string, activeUnits: ActiveUnit[] =
 }
 
 export function parseUnits(text: string): ParsedUnit[] {
+  return parseDistillResult(text).units;
+}
+
+export function parseDistillResult(text: string): {
+  units: ParsedUnit[];
+  session: SessionSummary | null;
+} {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
-  if (start < 0 || end <= start) return [];
+  if (start < 0 || end <= start) return { units: [], session: null };
   let parsed: any;
   try {
     parsed = JSON.parse(text.slice(start, end + 1));
   } catch {
-    return [];
+    return { units: [], session: null };
   }
   const list = Array.isArray(parsed?.units) ? parsed.units : [];
   const allowed = new Set(['taste', 'preference', 'decision', 'fact', 'procedure', 'pitfall']);
@@ -94,5 +108,21 @@ export function parseUnits(text: string): ParsedUnit[] {
       targetId: Number.isInteger(targetRaw) && targetRaw > 0 ? targetRaw : null,
     });
   }
-  return units;
+  const rawSession = parsed?.session as Record<string, any> | undefined;
+  const session: SessionSummary | null =
+    rawSession && typeof rawSession.summary === 'string' && rawSession.summary.trim()
+      ? {
+          summary: String(rawSession.summary).slice(0, 600),
+          decisions: Array.isArray(rawSession.decisions)
+            ? rawSession.decisions.map((item: unknown) => String(item).slice(0, 200)).slice(0, 10)
+            : [],
+          openQuestions: Array.isArray(rawSession.open_questions)
+            ? rawSession.open_questions.map((item: unknown) => String(item).slice(0, 200)).slice(0, 10)
+            : [],
+          lessons: Array.isArray(rawSession.lessons)
+            ? rawSession.lessons.map((item: unknown) => String(item).slice(0, 200)).slice(0, 10)
+            : [],
+        }
+      : null;
+  return { units, session };
 }

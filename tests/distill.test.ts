@@ -84,6 +84,12 @@ test('distill pipeline extracts candidates, review activates, hook injects taste
                     evidence: [{ quote: '不要解释' }],
                   },
                 ],
+                session: {
+                  summary: '测试会话总结',
+                  decisions: ['采用方案 A'],
+                  open_questions: ['是否补充本地模型'],
+                  lessons: ['先验证再扩展'],
+                },
               }),
             },
           },
@@ -108,6 +114,13 @@ test('distill pipeline extracts candidates, review activates, hook injects taste
     .prepare('SELECT status FROM distill_state WHERE session_id = ?')
     .get(SESSION_ID) as { status: string };
   assert.equal(state.status, 'done');
+
+  const card = db
+    .prepare('SELECT summary, decisions_json, generated_by FROM session_cards WHERE session_id = ?')
+    .get(SESSION_ID) as { summary: string; decisions_json: string; generated_by: string };
+  assert.equal(card.summary, '测试会话总结');
+  assert.match(card.decisions_json, /方案 A/);
+  assert.equal(card.generated_by, 'llm');
 
   setUnitStatus(db, unit.id, 'active');
   db.close();

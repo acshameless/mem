@@ -18,3 +18,7 @@ export function redactSecrets(text: string): string {
   }
   return result;
 }
+
+export function containsSecret(text: string): boolean {
+  return redactSecrets(text) !== text;
+}

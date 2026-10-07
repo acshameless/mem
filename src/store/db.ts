@@ -34,6 +34,9 @@ export function openDb(path: string): DatabaseSync {
   if (!unitColumns.some((column) => column.name === 'use_count')) {
     tryExec(db, 'ALTER TABLE memory_units ADD COLUMN use_count INTEGER DEFAULT 0');
   }
+  if (!unitColumns.some((column) => column.name === 'pinned')) {
+    tryExec(db, 'ALTER TABLE memory_units ADD COLUMN pinned INTEGER DEFAULT 0');
+  }
   if (!unitColumns.some((column) => column.name === 'positive_feedback')) {
     tryExec(db, 'ALTER TABLE memory_units ADD COLUMN positive_feedback INTEGER DEFAULT 0');
   }
@@ -43,6 +46,18 @@ export function openDb(path: string): DatabaseSync {
   const toolColumns = db.prepare('PRAGMA table_info(tool_calls)').all() as Array<{ name: string }>;
   if (!toolColumns.some((column) => column.name === 'blob_hash')) {
     tryExec(db, 'ALTER TABLE tool_calls ADD COLUMN blob_hash TEXT');
+  }
+  const cardColumns = db.prepare('PRAGMA table_info(session_cards)').all() as Array<{ name: string }>;
+  for (const [name, type] of [
+    ['summary', 'TEXT'],
+    ['decisions_json', 'TEXT'],
+    ['open_questions_json', 'TEXT'],
+    ['lessons_json', 'TEXT'],
+    ['generated_by', 'TEXT'],
+  ] as Array<[string, string]>) {
+    if (!cardColumns.some((column) => column.name === name)) {
+      tryExec(db, `ALTER TABLE session_cards ADD COLUMN ${name} ${type}`);
+    }
   }
   // Fill segments before the segmented triggers exist, so no trigger deletes
   // rows from an index that was never built.

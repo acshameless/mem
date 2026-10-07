@@ -128,14 +128,24 @@ node src/cli/memctl.ts profile diff 1 2
 ## Operations
 
 ```bash
-node src/cli/memctl.ts metrics        # injection and unit metrics
-node src/cli/memctl.ts review         # pending candidates
-node src/cli/memctl.ts review --notify
-node src/cli/memctl.ts sources        # registered source adapters
-node src/cli/memctl.ts report         # weekly quality report
-node src/cli/memctl.ts archive        # recent PreCompact archives
-node src/cli/memctl.ts forget session <id> --yes
-node src/cli/memctl.ts forget unit <id> --yes
+memctl metrics                        # injection and unit metrics
+memctl review [--notify]              # pending candidates
+memctl sources                        # cline / codex / generic adapters
+memctl report                         # weekly quality report
+memctl archive                        # recent PreCompact archives
+memctl units edit <id> --statement "..."   # edit / merge / pin
+memctl units merge <keepId> <mergeId>
+memctl units pin <id>
+memctl skills list | draft | approve <id>
+memctl export --out <dir> [--raw]     # portable backup
+memctl import <dir>
+memctl card <sessionId>               # LLM session summary
+memctl scan [--redact-raw --yes]      # secret scan
+memctl off <taskId> | on <taskId>     # per-task memory switch
+memctl capture-off <taskId>
+memctl tasks
+memctl forget session <id> --yes
+memctl forget unit <id> --yes
 bash scripts/install-precompact-hook.sh     # archive pre-compaction context
 bash scripts/install-review-reminder.sh     # daily 10:00 notification
 ```
