@@ -25,6 +25,10 @@ export function openDb(path: string): DatabaseSync {
   if (!columns.some((column) => column.name === 'text_seg')) {
     tryExec(db, 'ALTER TABLE turns ADD COLUMN text_seg TEXT');
   }
+  const sessionColumns = db.prepare('PRAGMA table_info(sessions)').all() as Array<{ name: string }>;
+  if (!sessionColumns.some((column) => column.name === 'lifecycle')) {
+    tryExec(db, 'ALTER TABLE sessions ADD COLUMN lifecycle TEXT');
+  }
   const unitColumns = db.prepare('PRAGMA table_info(memory_units)').all() as Array<{
     name: string;
   }>;

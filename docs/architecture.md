@@ -1,5 +1,26 @@
 # 架构与内部机制
 
+## 用户交互路径（图示）
+
+![How mem joins one Cline turn](assets/injection-flow.svg)
+
+上图为一次完整交互：1-7 是同步注入路径，8-9 是 MCP 按需检索，
+10-12 是旁路采集与异步学习。关键点：mem 不代理 LLM 网络流量，也不修改
+Cline 源码；它只在 Cline 官方 hook 的执行点上运行，并把
+`contextModification` 作为额外上下文交还给 Cline。
+
+进入模型的通道有三条（详见 `docs/hooks.md`）：
+
+```text
+1. UserPromptSubmit hook → contextModification → 固定 <memory> 块（自动，每次 prompt）
+2. MCP server           → 模型调用 mem_recall 等 → tool_result（按需）
+3. SKILL.md + use_skill → 技能完整指令进入上下文（按需）
+```
+
+9 个 VS Code hook 全部安装：1 个注入（UserPromptSubmit）+ 1 个归档
+（PreCompact）+ 7 个采集/观测（TaskStart/Resume/Cancel/Complete、
+PreToolUse/PostToolUse、Notification）。
+
 ## 进程模型
 
 ```text

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS sessions (
   status TEXT,
   started_at TEXT,
   updated_at TEXT,
+  lifecycle TEXT,
   prompt TEXT,
   title TEXT,
   tokens_in INTEGER,

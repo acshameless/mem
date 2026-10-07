@@ -19,6 +19,7 @@ import { exportStore, importStore } from '../core/portable.ts';
 import { redactRawStore, scanStore } from '../core/scan.ts';
 import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
 import { runTui } from '../tui/review.ts';
+import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
 import { runApp } from '../tui/app.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
@@ -58,6 +59,7 @@ function runImport(): void {
   const generic = genericDir ? ingestGenericDir(db, genericDir) : 0;
   const codex = ingestCodexDir(db, codexSessionsRoot());
   const linked = correlateSessions(db);
+  const lifecycle = updateSessionLifecycle(db);
   const merged = mergeHookToolDurations(db);
   console.log(`db        ${memDbPath()}`);
   console.log(`hooks     ${fmt(hooks.events)} new events from ${fmt(hooks.files)} files`);
@@ -68,6 +70,7 @@ function runImport(): void {
   if (genericDir) console.log(`generic   ${fmt(generic)} sessions imported from ${genericDir}`);
   console.log(`codex     ${fmt(codex)} sessions imported from ${codexSessionsRoot()}`);
   console.log(`linked    ${fmt(linked)} sessions correlated to hook tasks`);
+  console.log(`lifecycle ${fmt(lifecycle)} sessions classified (completed/cancelled/failed/aborted_unknown)`);
   console.log(`tools     ${fmt(merged)} tool calls enriched with hook durations`);
   db.close();
 }
@@ -104,14 +107,14 @@ function runSessions(): void {
   const limit = Number(args[0] ?? 10);
   const rows = db
     .prepare(
-      `SELECT session_id, workspace_root, provider, model, status, started_at,
+      `SELECT session_id, workspace_root, provider, model, status, lifecycle, started_at,
               tokens_in, tokens_out, hook_task_id
        FROM sessions ORDER BY started_at DESC LIMIT ?`
     )
     .all(limit) as Array<Record<string, unknown>>;
   for (const row of rows) {
     console.log(
-      `${row.session_id}  ${row.started_at}  ${row.model}  ${row.workspace_root}\n` +
+      `${row.session_id}  ${row.started_at}  ${row.model}  [${row.lifecycle ?? '?'}]  ${row.workspace_root}\n` +
         `  tokens=${fmt(row.tokens_in)}/${fmt(row.tokens_out)}  hook=${row.hook_task_id ?? '-'}`
     );
   }
@@ -337,6 +340,11 @@ function runMetrics(): void {
     .prepare(`SELECT status, count(*) c FROM memory_units GROUP BY status`)
     .all() as Array<{ status: string; c: number }>;
   const statusMap = new Map(statuses.map((row) => [row.status, row.c]));
+  const lifecycleRows = db
+    .prepare(`SELECT coalesce(lifecycle, 'unknown') lifecycle, count(*) c FROM sessions GROUP BY lifecycle`)
+    .all() as Array<{ lifecycle: string; c: number }>;
+  console.log('session lifecycle');
+  for (const row of lifecycleRows) console.log(`  ${row.lifecycle.padEnd(15)} ${fmt(row.c)}`);
   console.log(`injections        ${fmt(injection.c)}`);
   console.log(`injected sessions ${fmt(injectedSessions.c)}`);
   console.log(`avg block chars   ${injection.avg_chars.toFixed(0)}`);

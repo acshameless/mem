@@ -93,6 +93,7 @@ Keys: `1-9` / `Tab` switch, `j/k` move, `Enter` submit, `Esc` cancel, `q` quit.
 
 - [Feature inventory](docs/features.md)
 - [Architecture & internals](docs/architecture.md)
+- [Hooks & skills channels](docs/hooks.md)
 - [Data model](docs/data-model.md)
 - [CLI reference](docs/cli.md)
 - [MCP tools](docs/mcp.md)
@@ -200,6 +201,7 @@ memctl tui --review   # 只看候选审核
 
 - [功能总览](docs/features.md)
 - [架构与内部机制](docs/architecture.md)
+- [Hook 全覆盖与技能通道](docs/hooks.md)
 - [数据模型](docs/data-model.md)
 - [CLI 参考](docs/cli.md)
 - [MCP 工具](docs/mcp.md)

@@ -12,6 +12,7 @@
 | 会话解析 | Cline 4.x `sessions/<id>/<id>.json` + `.messages.json` → sessions/turns/tool_calls | `src/ingest/sessions.ts` |
 | 增量 daemon | 2s 轮询 hooks/sessions/injections，5 分钟全量对账 | `src/daemon/memd.ts` |
 | 事件关联 | hook taskId ↔ Cline session_id（taskId 优先，其次时间窗 ±30s + workspace） | `src/ingest/correlate.ts` |
+| 生命周期分类 | completed / cancelled / failed / aborted_unknown / in_progress / idle | `src/ingest/lifecycle.ts` |
 | 工具耗时 | PostToolUse `executionTimeMs/success` 合并进 tool_calls | `src/ingest/tool_durations.ts` |
 | 大输出归档 | >8KB 工具结果写内容寻址 blob，DB 存 2KB 预览 + hash | `src/core/blobs.ts` |
 | PreCompact 归档 | 压缩前复制 contextJson/contextRaw 到 `archive/<session>/<ts>/` | `src/hooks/pre_compact.ts` |
@@ -43,6 +44,7 @@
 |---|---|---|
 | 会话卡 | 启发式 goal/outcome/tools/files/errors | `src/ingest/cards.ts` |
 | LLM 摘要 | summary / decisions / open questions / lessons | `src/distill/prompt.ts` |
+| 轨迹蒸馏 | bundle 携带 TRAJECTORY（含 use_skill / MCP 调用）与 THINKING 片段 | `src/distill/run.ts` |
 | 蒸馏 | `memctl distill`（手动）、daemon 自动（静默窗口） | `src/distill/run.ts` |
 | 语义去重 | 蒸馏时携带 active 单元，模型标注 duplicate/supersedes | 同上 |
 | 审核 | `memctl units approve|reject|edit|merge|pin` | `src/core/units.ts` |

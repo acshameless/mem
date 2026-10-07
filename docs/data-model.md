@@ -34,11 +34,13 @@ workspace_root, payload_json
 
 ```
 session_id PK, source, provider, model, cwd, workspace_root, status,
-started_at, updated_at, prompt, title, tokens_in, tokens_out, cost,
+started_at, updated_at, lifecycle, prompt, title, tokens_in, tokens_out, cost,
 messages_path, system_prompt, hook_task_id, correlation, raw_json
 ```
 
 `hook_task_id` 是 hook 的 `conv_*` id；没有时为 NULL，由时间窗关联填充。
+`lifecycle`：completed / cancelled / failed / aborted_unknown / in_progress / idle，
+由 `src/ingest/lifecycle.ts` 根据 hook 事件与会话状态推导。
 
 ### turns
 

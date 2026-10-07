@@ -36,25 +36,42 @@ interface SessionRow {
   distill_status: string | null;
 }
 
-function buildBundle(
+export function buildBundle(
   db: DatabaseSync,
   session: SessionRow,
   maxChars: number
 ): string {
   const turns = db
     .prepare(
-      `SELECT turn_index, role, text FROM turns
-       WHERE session_id = ? AND kind = 'text' AND text IS NOT NULL
+      `SELECT turn_index, role, kind, text FROM turns
+       WHERE session_id = ? AND kind IN ('text', 'thinking') AND text IS NOT NULL
          AND (display_role IS NULL OR display_role != 'system')
-       ORDER BY turn_index, block_index LIMIT 60`
+       ORDER BY turn_index, block_index LIMIT 80`
     )
-    .all(session.session_id) as Array<{ turn_index: number; role: string | null; text: string }>;
+    .all(session.session_id) as Array<{
+    turn_index: number;
+    role: string | null;
+    kind: string;
+    text: string;
+  }>;
   const tools = db
     .prepare(
       `SELECT tool_name, count(*) c FROM tool_calls
        WHERE session_id = ? AND tool_name IS NOT NULL GROUP BY tool_name`
     )
     .all(session.session_id) as Array<{ tool_name: string; c: number }>;
+  const trajectory = db
+    .prepare(
+      `SELECT tool_name, parameters_json, result_text, success, duration_ms
+       FROM tool_calls WHERE session_id = ? AND tool_name IS NOT NULL ORDER BY id LIMIT 40`
+    )
+    .all(session.session_id) as Array<{
+    tool_name: string;
+    parameters_json: string | null;
+    result_text: string | null;
+    success: number | null;
+    duration_ms: number | null;
+  }>;
 
   let bundle =
     `SESSION ${session.session_id}\n` +
@@ -62,9 +79,29 @@ function buildBundle(
     `WORKSPACE ${session.workspace_root ?? ''}\n` +
     `MODEL ${session.model ?? ''}\n` +
     `TOOLS ${tools.map((row) => `${row.tool_name}×${row.c}`).join(', ')}\n\n`;
+  if (trajectory.length > 0) {
+    bundle += 'TRAJECTORY (tool → outcome; include skills and MCP calls):\n';
+    trajectory.forEach((call, index) => {
+      const args = String(call.parameters_json ?? '').replace(/\s+/g, ' ').slice(0, 160);
+      const result = String(call.result_text ?? '').replace(/\s+/g, ' ').slice(0, 160);
+      const outcome =
+        call.success === 0 ? 'failed' : call.success === 1 ? 'ok' : 'unknown';
+      bundle +=
+        `[${index + 1}] ${call.tool_name}(${args}) -> ${outcome}` +
+        `${call.duration_ms != null ? ` in ${call.duration_ms}ms` : ''}` +
+        `${result ? `; result: ${result}` : ''}\n`;
+    });
+    bundle += '\n';
+  }
   for (const turn of turns) {
-    const role = turn.role === 'user' ? 'USER' : 'ASSISTANT';
-    bundle += `[${role}] ${turn.text}\n\n`;
+    const role =
+      turn.kind === 'thinking'
+        ? 'THINKING'
+        : turn.role === 'user'
+          ? 'USER'
+          : 'ASSISTANT';
+    const text = turn.kind === 'thinking' ? turn.text.slice(0, 240) : turn.text;
+    bundle += `[${role}] ${text}\n\n`;
     if (bundle.length >= maxChars) break;
   }
   return bundle.slice(0, maxChars);

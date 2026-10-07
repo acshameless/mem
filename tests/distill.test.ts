@@ -14,6 +14,7 @@ import {
   updateUnitUsage,
 } from '../src/core/units.ts';
 import { distillSessions } from '../src/distill/run.ts';
+import { buildBundle } from '../src/distill/run.ts';
 import { correlateSessions } from '../src/ingest/correlate.ts';
 import { ingestHookFile } from '../src/ingest/hooks.ts';
 import { ingestSessionDir } from '../src/ingest/sessions.ts';
@@ -284,6 +285,47 @@ test('usage counters and decay run on the migrated schema', () => {
     confidence: number;
   };
   assert.ok(old.confidence < 0.8);
+  db.close();
+});
+
+test('distill bundle carries tool, skill and MCP trajectory plus thinking', () => {
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'mem-bundle-')), 'memory.db'));
+  db.prepare(
+    `INSERT INTO sessions (session_id, source, model, workspace_root, status, started_at)
+     VALUES ('bundle_session', 'cline', 'deepseek-v4-flash', '/repo', 'completed', '2026-10-07T01:00:00Z')`
+  ).run();
+  const insertTurn = db.prepare(
+    `INSERT INTO turns (session_id, turn_index, block_index, role, kind, text)
+     VALUES ('bundle_session', ?, 0, ?, ?, ?)`
+  );
+  insertTurn.run(0, 'user', 'text', '帮我用技能完成部署');
+  insertTurn.run(1, 'assistant', 'thinking', '先检查是否有可用技能');
+  insertTurn.run(2, 'assistant', 'text', '已使用部署技能完成');
+  const insertTool = db.prepare(
+    `INSERT INTO tool_calls (session_id, turn_index, tool_call_id, tool_name, parameters_json, result_text, success, duration_ms)
+     VALUES ('bundle_session', ?, ?, ?, ?, ?, 1, 120)`
+  );
+  insertTool.run(1, 'call_skill', 'use_skill', '{"name":"deploy"}', 'skill loaded');
+  insertTool.run(2, 'call_mcp', 'mem_recall', '{"query":"部署"}', 'history rows');
+
+  const bundle = buildBundle(
+    db,
+    {
+      session_id: 'bundle_session',
+      workspace_root: '/repo',
+      started_at: '2026-10-07T01:00:00Z',
+      updated_at: null,
+      model: 'deepseek-v4-flash',
+      distilled_at: null,
+      distill_status: null,
+    },
+    8000
+  );
+  assert.match(bundle, /TRAJECTORY/);
+  assert.match(bundle, /use_skill/);
+  assert.match(bundle, /mem_recall/);
+  assert.match(bundle, /\[THINKING\]/);
+  assert.match(bundle, /WORKSPACE \/repo/);
   db.close();
 });
 

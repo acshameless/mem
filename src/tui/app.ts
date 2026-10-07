@@ -94,7 +94,7 @@ export function loadDashboard(db: DatabaseSync): TuiRow[] {
 export function loadSessions(db: DatabaseSync): TuiRow[] {
   const rows = db
     .prepare(
-      `SELECT session_id, started_at, workspace_root, model, tokens_in, tokens_out, status
+      `SELECT session_id, started_at, workspace_root, model, tokens_in, tokens_out, status, lifecycle
        FROM sessions ORDER BY started_at DESC LIMIT 200`
     )
     .all() as Array<Record<string, any>>;
@@ -116,7 +116,7 @@ export function loadSessions(db: DatabaseSync): TuiRow[] {
       : ['no card yet'];
     return {
       id: row.session_id,
-      title: `${String(row.started_at ?? '').slice(0, 19)}  ${row.model ?? ''}  ${row.status ?? ''}`,
+      title: `${String(row.started_at ?? '').slice(0, 19)}  ${row.model ?? ''}  ${row.status ?? ''}  [${row.lifecycle ?? '?'}]`,
       subtitle: `${row.session_id}  tokens ${row.tokens_in ?? 0}/${row.tokens_out ?? 0}  ${row.workspace_root ?? ''}`,
       detail,
     };
