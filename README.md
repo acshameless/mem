@@ -127,6 +127,19 @@ node src/cli/memctl.ts profile diff 1 2
 
 ## Operations
 
+### TUI
+
+```bash
+memctl tui            # full app: dashboard, sessions, search, review, skills, tasks, metrics, config
+memctl tui --review   # review-only TUI
+```
+
+Screens switch with `1-9` or `Tab`. Row navigation `j/k` (or arrows).
+Actions per screen: `a` approve/activate, `r` reject/retire, `p/u` pin/unpin,
+`e` edit, `f` forget, `o/x` skill outcome, `n` draft skill, `d` distill
+session, `x/i/s` export/import/scan on Config, `m/c/i` task toggles. `/` starts
+search input, `q` quits. Non-TTY environments print a text summary.
+
 ```bash
 memctl metrics                        # injection and unit metrics
 memctl review [--notify]              # pending candidates

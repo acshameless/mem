@@ -19,6 +19,7 @@ import { exportStore, importStore } from '../core/portable.ts';
 import { redactRawStore, scanStore } from '../core/scan.ts';
 import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
 import { runTui } from '../tui/review.ts';
+import { runApp } from '../tui/app.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
 import { listAdapters } from '../adapters/index.ts';
@@ -844,7 +845,8 @@ switch (command) {
     break;
   case 'tui': {
     const db = open();
-    runTui(db);
+    if (args.includes('--review')) runTui(db);
+    else runApp(db);
     process.on('exit', () => {
       try {
         db.close();
