@@ -194,7 +194,11 @@ function captureBlockAttachment(
 ): void {
   const source = (block.source ?? {}) as Record<string, any>;
   const mime = String(
-    source.media_type ?? block.mimeType ?? block.mime ?? 'application/octet-stream'
+    source.media_type ??
+      block.mediaType ??
+      block.mimeType ??
+      block.mime ??
+      'application/octet-stream'
   );
   const data = source.data ?? block.data ?? block.base64;
   let blob: { hash: string; size: number } | null = null;

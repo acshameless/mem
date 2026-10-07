@@ -3,6 +3,31 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { memHome } from '../core/paths.ts';
 import { defaultHooksDir, hooksDoctor } from '../core/hooks_doctor.ts';
+import { dirname } from 'node:path';
+import { ingestHookAttachments } from '../ingest/attachments.ts';
+import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
+import { ingestSessionDir } from '../ingest/sessions.ts';
+
+// Re-read one session from disk. This makes acceptance deterministic and
+// independent of the daemon version that is currently running.
+function reingestSession(db: DatabaseSync, sessionId: string): void {
+  const row = db
+    .prepare('SELECT messages_path FROM sessions WHERE session_id = ?')
+    .get(sessionId) as { messages_path: string | null } | undefined;
+  if (row?.messages_path && existsSync(row.messages_path)) {
+    try {
+      ingestSessionDir(db, dirname(row.messages_path));
+    } catch {
+      // Best effort: verification below reports the result.
+    }
+  }
+  try {
+    ingestHookAttachments(db);
+    updateSessionLifecycle(db);
+  } catch {
+    // Best effort.
+  }
+}
 
 export interface AcceptanceStep {
   id: string;
@@ -163,6 +188,10 @@ export async function runAcceptance(
     console.log(`Waiting up to ${Math.round((options.timeoutMs ?? 180000) / 1000)}s...`);
     const wait1 = await waitForSession(db, marker, options.timeoutMs ?? 180000, options.sleep);
     if (wait1.found) {
+      const found = db
+        .prepare('SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1')
+        .get(`%${marker}%`) as { session_id: string } | undefined;
+      if (found) reingestSession(db, found.session_id);
       steps.push(...verifySession(db, marker));
     } else {
       steps.push({
@@ -194,9 +223,19 @@ export async function runAcceptance(
       const session = db
         .prepare('SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1')
         .get(`%${attachMarker}%`) as { session_id: string } | undefined;
-      const attachments = session
-        ? count(db, 'SELECT count(*) c FROM attachments WHERE session_id = ?', session.session_id)
-        : 0;
+      let attachments = 0;
+      if (session) {
+        // The image block can arrive a moment after the first message.
+        for (let attempt = 0; attempt < 5 && attachments === 0; attempt += 1) {
+          reingestSession(db, session.session_id);
+          attachments = count(
+            db,
+            'SELECT count(*) c FROM attachments WHERE session_id = ?',
+            session.session_id
+          );
+          if (attachments === 0) await (options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(2000);
+        }
+      }
       steps.push({
         id: 'attachment',
         title: 'image attachment stored',
@@ -213,6 +252,79 @@ export async function runAcceptance(
           : 'no hook event: the attachment prompt was not sent',
       });
     }
+    }
+
+    // Step 3: @nomem must suppress injection but keep capture.
+    const nomemMarker = `MEM-NOMEM-${nonce()}`;
+    console.log('');
+    console.log('== Step 3: @nomem switch ==');
+    console.log('1. Start a NEW Cline task.');
+    console.log(`2. Paste and send exactly:  ${nomemMarker} @nomem 请只回复 OK。`);
+    const wait3 = await waitForSession(db, nomemMarker, options.timeoutMs ?? 180000, options.sleep);
+    if (wait3.found) {
+      const row = db
+        .prepare(
+          'SELECT session_id, messages_path FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1'
+        )
+        .get(`%${nomemMarker}%`) as { session_id: string; messages_path: string | null } | undefined;
+      if (row) reingestSession(db, row.session_id);
+      let suppressed = false;
+      if (row?.messages_path && existsSync(row.messages_path)) {
+        suppressed = !readFileSync(row.messages_path, 'utf8').includes('<hook_context');
+      }
+      steps.push({
+        id: 'nomem',
+        title: '@nomem suppresses injection',
+        status: row ? (suppressed ? 'pass' : 'fail') : 'fail',
+        detail: row ? (suppressed ? 'no hook_context found' : 'hook_context was injected') : 'session not found',
+      });
+    } else {
+      steps.push({
+        id: 'nomem',
+        title: '@nomem suppresses injection',
+        status: 'fail',
+        detail: 'timeout: prompt not sent',
+      });
+    }
+
+    // Step 4: an MCP tool call must be recorded.
+    const mcpMarker = `MEM-MCP-${nonce()}`;
+    console.log('');
+    console.log('== Step 4: MCP tool ==');
+    console.log('1. Start a NEW Cline task.');
+    console.log(`2. Paste and send exactly:  ${mcpMarker}。请调用 mem_status 工具，然后只回复 OK。`);
+    const wait4 = await waitForSession(db, mcpMarker, options.timeoutMs ?? 180000, options.sleep);
+    if (wait4.found) {
+      const row = db
+        .prepare(
+          'SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1'
+        )
+        .get(`%${mcpMarker}%`) as { session_id: string } | undefined;
+      let calls = 0;
+      if (row) {
+        for (let attempt = 0; attempt < 5 && calls === 0; attempt += 1) {
+          reingestSession(db, row.session_id);
+          calls = count(
+            db,
+            `SELECT count(*) c FROM tool_calls WHERE session_id = ? AND tool_name LIKE 'mem_%'`,
+            row.session_id
+          );
+          if (calls === 0) await (options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(2000);
+        }
+      }
+      steps.push({
+        id: 'mcp',
+        title: 'MCP tool call recorded',
+        status: calls > 0 ? 'pass' : 'fail',
+        detail: `${calls} MCP call(s)`,
+      });
+    } else {
+      steps.push({
+        id: 'mcp',
+        title: 'MCP tool call recorded',
+        status: 'fail',
+        detail: 'timeout: prompt not sent',
+      });
     }
   }
 
