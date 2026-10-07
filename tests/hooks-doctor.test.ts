@@ -15,7 +15,9 @@ test('hooks doctor detects missing, non-executable and never-fired hooks', () =>
   writeFileSync(join(dir, 'Notification'), '#!/bin/bash\n');
   chmodSync(join(dir, 'Notification'), 0o755);
 
-  const files = checkHookFiles(dir, 'darwin');
+  // Inject the permission check. Windows has no POSIX executable bit.
+  const isExecutable = (path: string) => !path.endsWith('PreCompact');
+  const files = checkHookFiles(dir, 'darwin', isExecutable);
   assert.equal(files.find((row) => row.event === 'UserPromptSubmit')!.executable, true);
   assert.equal(files.find((row) => row.event === 'PreCompact')!.executable, false);
   assert.equal(files.find((row) => row.event === 'TaskStart')!.installed, false);
@@ -29,7 +31,7 @@ test('hooks doctor detects missing, non-executable and never-fired hooks', () =>
   assert.equal(stats.find((row) => row.event === 'UserPromptSubmit')!.count, 1);
   assert.equal(stats.find((row) => row.event === 'TaskStart')!.count, 0);
 
-  const rows = hooksDoctor(db, dir, 'darwin');
+  const rows = hooksDoctor(db, dir, 'darwin', isExecutable);
   assert.equal(rows.find((row) => row.event === 'UserPromptSubmit')!.health, 'ok');
   assert.equal(rows.find((row) => row.event === 'PreCompact')!.health, 'not_executable');
   assert.equal(rows.find((row) => row.event === 'TaskStart')!.health, 'missing');

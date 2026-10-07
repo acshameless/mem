@@ -30,19 +30,22 @@ export function defaultHooksDir(platform = process.platform): string {
 // Windows hooks use <Event>.ps1. Other platforms use the bare event name.
 export function checkHookFiles(
   dir: string,
-  platform = process.platform
+  platform = process.platform,
+  isExecutable: (path: string) => boolean = (path) => {
+    try {
+      accessSync(path, constants.X_OK);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 ): HookFileStatus[] {
   return HOOK_EVENTS.map((event) => {
     const path = join(dir, platform === 'win32' ? `${event}.ps1` : event);
     const installed = existsSync(path);
     let executable = installed;
     if (installed && platform !== 'win32') {
-      try {
-        accessSync(path, constants.X_OK);
-        executable = true;
-      } catch {
-        executable = false;
-      }
+      executable = isExecutable(path);
     }
     return { event, installed, executable, path };
   });
@@ -78,9 +81,12 @@ export interface HookDoctorRow extends HookFileStatus, HookEventStat {
 export function hooksDoctor(
   db: DatabaseSync,
   dir: string,
-  platform = process.platform
+  platform = process.platform,
+  isExecutable?: (path: string) => boolean
 ): HookDoctorRow[] {
-  const files = new Map(checkHookFiles(dir, platform).map((row) => [row.event, row]));
+  const files = new Map(
+    checkHookFiles(dir, platform, isExecutable).map((row) => [row.event, row])
+  );
   const stats = new Map(hookEventStats(db).map((row) => [row.event, row]));
   return HOOK_EVENTS.map((event) => {
     const file = files.get(event)!;
