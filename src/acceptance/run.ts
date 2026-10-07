@@ -5,6 +5,7 @@ import { memHome } from '../core/paths.ts';
 import { defaultHooksDir, hooksDoctor } from '../core/hooks_doctor.ts';
 import { dirname } from 'node:path';
 import { ingestHookAttachments } from '../ingest/attachments.ts';
+import { ingestHookDir } from '../ingest/hooks.ts';
 import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
 import { ingestSessionDir } from '../ingest/sessions.ts';
 import { correlateSessions } from '../ingest/correlate.ts';
@@ -23,6 +24,7 @@ function reingestSession(db: DatabaseSync, sessionId: string): void {
     }
   }
   try {
+    ingestHookDir(db, join(memHome(), 'raw', 'hooks'));
     correlateSessions(db);
     ingestHookAttachments(db);
     updateSessionLifecycle(db);
@@ -168,6 +170,7 @@ async function waitForSession(
 
 export interface AcceptanceOptions {
   check?: boolean;
+  full?: boolean;
   timeoutMs?: number;
   sleep?: (ms: number) => Promise<void>;
 }
@@ -344,6 +347,77 @@ export async function runAcceptance(
         title: 'MCP tool call recorded',
         status: 'fail',
         detail: 'timeout: prompt not sent',
+      });
+    }
+
+    // Step 5: cancellation must produce lifecycle=cancelled.
+    const cancelMarker = `MEM-CANCEL-${nonce()}`;
+    console.log('');
+    console.log('== Step 5: cancel a running task ==');
+    console.log('1. Start a NEW Cline task.');
+    console.log(`2. Send:  ${cancelMarker}。请写一篇 3000 字的长文。`);
+    console.log('3. While Cline works, press the STOP button.');
+    const wait5 = await waitForSession(db, cancelMarker, options.timeoutMs ?? 180000, options.sleep);
+    let cancelled = false;
+    if (wait5.found) {
+      const row = db
+        .prepare(
+          'SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1'
+        )
+        .get(`%${cancelMarker}%`) as { session_id: string } | undefined;
+      if (row) {
+        for (let attempt = 0; attempt < Math.max(3, Math.floor((options.timeoutMs ?? 180000) / 4000)); attempt += 1) {
+          reingestSession(db, row.session_id);
+          const lifecycle = (
+            db.prepare('SELECT lifecycle FROM sessions WHERE session_id = ?').get(row.session_id) as {
+              lifecycle: string | null;
+            }
+          ).lifecycle;
+          if (lifecycle === 'cancelled') {
+            cancelled = true;
+            break;
+          }
+          if (lifecycle === 'completed') break;
+          await (options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(2000);
+        }
+      }
+    }
+    steps.push({
+      id: 'cancel',
+      title: 'TaskCancel produces lifecycle=cancelled',
+      status: cancelled ? 'pass' : 'fail',
+      detail: cancelled
+        ? 'lifecycle=cancelled'
+        : wait5.found
+          ? 'no cancelled lifecycle: press STOP while the task runs'
+          : 'timeout: prompt not sent',
+    });
+
+    // Step 6 (optional): context compaction must create an archive.
+    if (options.full) {
+      const compactMarker = `MEM-COMPACT-${nonce()}`;
+      const archiveIndex = join(memHome(), 'archive', 'index.jsonl');
+      const before = existsSync(archiveIndex) ? readFileSync(archiveIndex, 'utf8').length : 0;
+      console.log('');
+      console.log('== Step 6: context compaction (long task) ==');
+      console.log('1. Start a NEW Cline task.');
+      console.log(`2. Send:  ${compactMarker}。请分多轮写一篇很长的报告，直到上下文被压缩。`);
+      console.log('3. Keep the task running until Cline compacts the context.');
+      await waitForSession(db, compactMarker, options.timeoutMs ?? 180000, options.sleep);
+      let archived = false;
+      const deadline = Date.now() + 10 * 60 * 1000;
+      while (Date.now() < deadline) {
+        if (existsSync(archiveIndex) && readFileSync(archiveIndex, 'utf8').length > before) {
+          archived = true;
+          break;
+        }
+        await (options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(5000);
+      }
+      steps.push({
+        id: 'compaction',
+        title: 'PreCompact archives the context',
+        status: archived ? 'pass' : 'skip',
+        detail: archived ? 'archive entry found' : 'no compaction within 10 minutes',
       });
     }
   }

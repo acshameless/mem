@@ -1045,6 +1045,7 @@ switch (command) {
     const timeoutArg = args.indexOf('--timeout');
     const code = await runAcceptance(db, {
       check: args.includes('--check'),
+      full: args.includes('--full'),
       timeoutMs: timeoutArg >= 0 ? Number(args[timeoutArg + 1]) * 1000 : undefined,
     });
     db.close();
