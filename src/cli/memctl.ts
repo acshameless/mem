@@ -552,10 +552,11 @@ function runPaths(): void {
 }
 
 function runTaskPrefs(): void {
-  const sub = args[0] === 'tasks' || !args[0] ? 'list' : args[0];
+  // `args` excludes the command. Use `command` for the subcommand.
+  const sub = command === 'tasks' || !command ? 'list' : command;
   const db = open();
   if (sub === 'on' || sub === 'off' || sub === 'capture-on' || sub === 'capture-off') {
-    const taskId = args[1];
+    const taskId = args[0];
     if (!taskId) {
       console.error(`usage: memctl ${sub} <taskId>`);
       process.exit(2);
@@ -725,7 +726,8 @@ function runDecay(): void {
 }
 
 function runPortable(): void {
-  const sub = args[0];
+  // `args` excludes the command. The command is `export` or `import`.
+  const sub = command;
   const db = open();
   if (sub === 'export') {
     const outArg = args.indexOf('--out');
@@ -736,7 +738,7 @@ function runPortable(): void {
     console.log(`hash      ${result.hash}`);
     console.log('note      config.json and API keys are never exported');
   } else if (sub === 'import') {
-    const dir = args[1];
+    const dir = args[0];
     if (!dir) {
       console.error('usage: memctl import <exportDir>');
       process.exit(2);

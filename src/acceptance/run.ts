@@ -111,7 +111,7 @@ export function verifySession(db: DatabaseSync, marker: string): AcceptanceStep[
   return steps;
 }
 
-function staticChecks(db: DatabaseSync): AcceptanceStep[] {
+export function staticChecks(db: DatabaseSync): AcceptanceStep[] {
   const steps: AcceptanceStep[] = [];
   const hooks = hooksDoctor(db, defaultHooksDir());
   const bad = hooks.filter((row) => row.health === 'missing' || row.health === 'not_executable');
@@ -131,7 +131,7 @@ function staticChecks(db: DatabaseSync): AcceptanceStep[] {
   return steps;
 }
 
-async function waitForSession(
+export async function waitForSession(
   db: DatabaseSync,
   marker: string,
   timeoutMs: number,

@@ -19,3 +19,6 @@ jobs:
           node-version: '24'
       - name: Test
         run: node --test "tests/**/*.test.ts"
+      - name: Coverage (ubuntu)
+        if: matrix.os == 'ubuntu-latest'
+        run: npm run coverage

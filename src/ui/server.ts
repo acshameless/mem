@@ -98,6 +98,35 @@ export interface UiServer {
   close: () => void;
 }
 
+export function buildState(db: DatabaseSync): Record<string, unknown> {
+  const count = (sql: string) => (db.prepare(sql).get() as { c: number }).c;
+  return {
+    db: (db.prepare('PRAGMA database_list').get() as { file: string }).file,
+    counts: {
+      sessions: count('SELECT count(*) c FROM sessions'),
+      turns: count('SELECT count(*) c FROM turns'),
+      cards: count('SELECT count(*) c FROM session_cards'),
+      activeUnits: count(`SELECT count(*) c FROM memory_units WHERE status='active'`),
+      candidates: count(`SELECT count(*) c FROM memory_units WHERE status='candidate'`),
+      injections: count('SELECT count(*) c FROM injections'),
+      paths: count('SELECT count(*) c FROM paths'),
+    },
+    auto: loadAutoDistillConfig(),
+    distill: { model: loadDistillConfig().model, provider: loadDistillConfig().provider },
+    sessions: db
+      .prepare(
+        `SELECT session_id, lifecycle, model, workspace_root, prompt FROM sessions
+         ORDER BY started_at DESC LIMIT 50`
+      )
+      .all(),
+    candidates: listUnits(db, { status: 'candidate', limit: 100 }),
+    active: listUnits(db, { status: 'active', limit: 100 }),
+    skills: db.prepare('SELECT * FROM skills ORDER BY id DESC LIMIT 100').all(),
+    paths: listPaths(db, 50),
+    tasks: listTaskPrefs(db, 100),
+  };
+}
+
 export async function startUi(
   db: DatabaseSync,
   options: { port?: number; host?: string } = {}
@@ -111,32 +140,7 @@ export async function startUi(
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/state') {
-        const count = (sql: string) => (db.prepare(sql).get() as { c: number }).c;
-        json(res, {
-          db: (db.prepare('PRAGMA database_list').get() as { file: string }).file,
-          counts: {
-            sessions: count('SELECT count(*) c FROM sessions'),
-            turns: count('SELECT count(*) c FROM turns'),
-            cards: count('SELECT count(*) c FROM session_cards'),
-            activeUnits: count(`SELECT count(*) c FROM memory_units WHERE status='active'`),
-            candidates: count(`SELECT count(*) c FROM memory_units WHERE status='candidate'`),
-            injections: count('SELECT count(*) c FROM injections'),
-            paths: count('SELECT count(*) c FROM paths'),
-          },
-          auto: loadAutoDistillConfig(),
-          distill: { model: loadDistillConfig().model, provider: loadDistillConfig().provider },
-          sessions: db
-            .prepare(
-              `SELECT session_id, lifecycle, model, workspace_root, prompt FROM sessions
-               ORDER BY started_at DESC LIMIT 50`
-            )
-            .all(),
-          candidates: listUnits(db, { status: 'candidate', limit: 100 }),
-          active: listUnits(db, { status: 'active', limit: 100 }),
-          skills: db.prepare('SELECT * FROM skills ORDER BY id DESC LIMIT 100').all(),
-          paths: listPaths(db, 50),
-          tasks: listTaskPrefs(db, 100),
-        });
+        json(res, buildState(db));
         return;
       }
       if (req.method === 'GET' && url.pathname === '/api/search') {
