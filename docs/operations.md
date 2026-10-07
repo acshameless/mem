@@ -85,6 +85,11 @@ bash scripts/install-precompact-hook.sh                    # 安装压缩归档 
     "scanMinutes": 5,
     "maxSessionsPerCycle": 3,
     "reDistillOnChange": true
+  },
+  "injection": {
+    "budgetChars": 3000,
+    "useEmbeddings": false,
+    "preCompact": false
   }
 }
 ```

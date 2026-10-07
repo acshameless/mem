@@ -23,6 +23,7 @@ export interface MemConfig {
 export interface InjectionConfig {
   budgetChars: number;
   useEmbeddings: boolean;
+  preCompact: boolean;
 }
 
 export interface EmbeddingConfig {
@@ -147,5 +148,6 @@ export function loadInjectionConfig(): InjectionConfig {
       )
     ),
     useEmbeddings: injection.useEmbeddings === true,
+    preCompact: injection.preCompact === true,
   };
 }

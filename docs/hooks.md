@@ -14,7 +14,7 @@ Windows `<事件>.ps1`），每个都有处理逻辑，没有闲置项。
 | `TaskComplete` | 任务被判定完成时调用。stdin: `taskComplete.taskMetadata{taskId,ulid,result,command}`；本轮已结束 | 原始采集；daemon 据此刷新会话卡、启动静默蒸馏计时 | 否 |
 | `PreToolUse` | 每次工具执行前调用。stdin: `preToolUse{toolName,parameters}`；`cancel=true` 可阻止该工具，支持 `contextModification` | 原始采集（工具名/参数），技能证据来源 | 否（可注入，刻意不用） |
 | `PostToolUse` | 工具执行后调用。stdin: `postToolUse{toolName,parameters,result,success,executionTimeMs}`；Cline 允许 hook 覆写 result、支持注入 | 原始采集（结果/成败/耗时），合并进 `tool_calls` | 否（同上） |
-| `PreCompact` | 上下文即将压缩前调用。stdin: `preCompact{contextSize,compactionStrategy,tokensIn/out,cache,deletedRange,contextJsonPath,contextRawPath}`；支持注入 | 归档 `contextJson/contextRaw` 到 `archive/`，原始采集 | 否（可注入，待增强） |
+| `PreCompact` | 上下文即将压缩前调用。stdin: `preCompact{contextSize,compactionStrategy,tokensIn/out,cache,deletedRange,contextJsonPath,contextRawPath}`；支持注入 | 归档 `contextJson/contextRaw`；可选注入 ≤400 字符 continuity card（默认关） | 可选（`injection.preCompact=true`） |
 | `Notification` | Cline 到达用户注意边界/生命周期通知时调用。stdin: `notification{event,source,message,waitingForUserInput,severity,…}`；Cline 明确忽略 `cancel` 与 `contextModification`（observation-only） | 原始采集 | 否（Cline 侧忽略） |
 
 为什么不注入更多 hook：
@@ -90,6 +90,36 @@ TRAJECTORY（工具序列，含 use_skill 与 MCP 调用）
 
 ## 五、可选增强（未做）
 
-1. `PreCompact` 注入关键记忆摘要，防止压缩后丢失偏好。
-2. `TaskStart` 会话简报（目前由 UserPromptSubmit 承担）。
-3. `PreToolUse` 危险命令拦截（Cline 支持 `cancel`）。
+1. `TaskStart` 会话简报（目前由 UserPromptSubmit 承担）。
+2. `PreToolUse` 危险命令拦截（Cline 支持 `cancel`）与工具级即时提示。
+
+## 六、PreCompact 注入：设计与启用
+
+默认关闭。开启方式：
+
+```json
+{ "injection": { "preCompact": true } }
+```
+
+行为：
+
+- 归档照常执行（压缩前上下文始终进入 `archive/`）。
+- 额外返回一个 ≤400 字符的 continuity card，内容为 pinned + 置信度最高的
+  active 单元（`<memory version="1" source="precompact">`），用于覆盖
+  “任务中途压缩、用户还没发新 prompt”的连续性缺口。
+- watermark `source="precompact"` 便于在采集侧识别，避免自我摄入。
+
+开启前建议验证（我们尚未在真实长会话上实测注入块的存活位置）：
+
+1. 开 `injection.preCompact`，构造一次会触发压缩的长会话。
+2. 压缩后检查该会话 `.messages.json`：注入块是否仍在上下文（而非落入
+   `deletedRange`）。
+3. 若存活：保持开启；若被删除：保持关闭——下一次 `UserPromptSubmit` 仍会
+   重新注入完整记忆，功能不会缺失，只是任务中途存在窗口期。
+
+PreToolUse 不注入的理由（除拦截场景外）：
+
+- 模型已决定调用该工具，注入只能影响下一个回合；
+- 工具调用高频，注入会累积上下文并干扰当前计划；
+- 需要“工具级提示”时，应按严格策略实现（指定工具、≤200 字符、每任务一次、
+  watermark 去重），而不是默认全量注入。
