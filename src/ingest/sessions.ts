@@ -57,8 +57,8 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
     `INSERT INTO sessions
        (session_id, source, provider, model, cwd, workspace_root, status, started_at,
         updated_at, prompt, title, tokens_in, tokens_out, cost, messages_path,
-        system_prompt, raw_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        system_prompt, raw_json, parent_session_id, parent_agent_id, is_subagent)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(session_id) DO UPDATE SET
        source=excluded.source, provider=excluded.provider, model=excluded.model,
        cwd=excluded.cwd, workspace_root=excluded.workspace_root, status=excluded.status,
@@ -66,7 +66,8 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
        prompt=excluded.prompt, title=excluded.title, tokens_in=excluded.tokens_in,
        tokens_out=excluded.tokens_out, cost=excluded.cost,
        messages_path=excluded.messages_path, system_prompt=excluded.system_prompt,
-       raw_json=excluded.raw_json`
+       raw_json=excluded.raw_json, parent_session_id=excluded.parent_session_id,
+       parent_agent_id=excluded.parent_agent_id, is_subagent=excluded.is_subagent`
   ).run(
     String(meta.session_id ?? id),
     meta.source ?? null,
@@ -84,7 +85,10 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
     Number(metaInfo.totalCost ?? 0) || null,
     messagesPath,
     doc.system_prompt ?? null,
-    JSON.stringify(meta)
+    JSON.stringify(meta),
+    meta.parent_session_id ?? meta.parentSessionId ?? metaInfo.parentSessionId ?? null,
+    meta.parent_agent_id ?? meta.parentAgentId ?? metaInfo.parentAgentId ?? null,
+    meta.is_subagent === true || meta.isSubagent === true || metaInfo.isSubagent === true ? 1 : 0
   );
 
   db.prepare('DELETE FROM turns WHERE session_id = ?').run(id);

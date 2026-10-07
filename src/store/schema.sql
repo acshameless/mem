@@ -33,7 +33,10 @@ CREATE TABLE IF NOT EXISTS sessions (
   system_prompt TEXT,
   hook_task_id TEXT,
   correlation TEXT,
-  raw_json TEXT
+  raw_json TEXT,
+  parent_session_id TEXT,
+  parent_agent_id TEXT,
+  is_subagent INTEGER DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS turns (

@@ -29,6 +29,15 @@ export function openDb(path: string): DatabaseSync {
   if (!sessionColumns.some((column) => column.name === 'lifecycle')) {
     tryExec(db, 'ALTER TABLE sessions ADD COLUMN lifecycle TEXT');
   }
+  if (!sessionColumns.some((column) => column.name === 'parent_session_id')) {
+    tryExec(db, 'ALTER TABLE sessions ADD COLUMN parent_session_id TEXT');
+  }
+  if (!sessionColumns.some((column) => column.name === 'parent_agent_id')) {
+    tryExec(db, 'ALTER TABLE sessions ADD COLUMN parent_agent_id TEXT');
+  }
+  if (!sessionColumns.some((column) => column.name === 'is_subagent')) {
+    tryExec(db, 'ALTER TABLE sessions ADD COLUMN is_subagent INTEGER DEFAULT 0');
+  }
   const unitColumns = db.prepare('PRAGMA table_info(memory_units)').all() as Array<{
     name: string;
   }>;

@@ -120,8 +120,9 @@ export function ingestCodexDir(db: DatabaseSync, root: string): number {
     const firstUser = turns.find((turn) => turn.role === 'user' && turn.kind === 'text');
     db.prepare(
       `INSERT INTO sessions
-         (session_id, source, provider, model, cwd, workspace_root, status, started_at, updated_at, prompt, raw_json)
-       VALUES (?, 'codex', ?, ?, ?, ?, 'completed', ?, ?, ?, '{}')
+         (session_id, source, provider, model, cwd, workspace_root, status, started_at, updated_at, prompt, raw_json,
+          parent_session_id, is_subagent)
+       VALUES (?, 'codex', ?, ?, ?, ?, 'completed', ?, ?, ?, '{}', ?, ?)
        ON CONFLICT(session_id) DO UPDATE SET
          updated_at=excluded.updated_at, prompt=excluded.prompt,
          provider=excluded.provider, model=excluded.model`
@@ -133,7 +134,9 @@ export function ingestCodexDir(db: DatabaseSync, root: string): number {
       (meta.runtime_workspace_roots ?? [])[0] ?? meta.cwd ?? null,
       timestamps[0] ?? meta.timestamp ?? null,
       timestamps[timestamps.length - 1] ?? null,
-      firstUser?.text ?? null
+      firstUser?.text ?? null,
+      meta.parent_session_id ?? meta.parentSessionId ?? null,
+      meta.is_subagent === true || meta.isSubagent === true ? 1 : 0
     );
 
     db.prepare('DELETE FROM turns WHERE session_id = ?').run(sessionId);

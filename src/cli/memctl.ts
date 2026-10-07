@@ -117,13 +117,15 @@ function runSessions(): void {
   const rows = db
     .prepare(
       `SELECT session_id, workspace_root, provider, model, status, lifecycle, started_at,
+              parent_session_id, is_subagent,
               tokens_in, tokens_out, hook_task_id
        FROM sessions ORDER BY started_at DESC LIMIT ?`
     )
     .all(limit) as Array<Record<string, unknown>>;
   for (const row of rows) {
     console.log(
-      `${row.session_id}  ${row.started_at}  ${row.model}  [${row.lifecycle ?? '?'}]  ${row.workspace_root}\n` +
+      `${row.is_subagent ? '  ↳ ' : ''}${row.session_id}  ${row.started_at}  ${row.model}  [${row.lifecycle ?? '?'}]  ${row.workspace_root}` +
+        `${row.parent_session_id ? `  parent=${row.parent_session_id}` : ''}\n` +
         `  tokens=${fmt(row.tokens_in)}/${fmt(row.tokens_out)}  hook=${row.hook_task_id ?? '-'}`
     );
   }

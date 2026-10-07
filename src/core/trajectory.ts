@@ -68,7 +68,7 @@ export function scoreSession(db: DatabaseSync, sessionId: string): number {
     score -= 0.2 * (tools.failed / tools.total);
     if (tools.failed === 0) score += 0.05;
   }
-  score -= Math.min(0.15, correctionCount(db, sessionId) * 0.03);
+  score -= Math.min(0.3, correctionCount(db, sessionId) * 0.06);
   return Math.max(0, Math.min(1, Number(score.toFixed(3))));
 }
 
@@ -118,10 +118,10 @@ export function rebuildPaths(db: DatabaseSync): number {
     );
     const scored = raw
       .map((item) => {
-        // Step efficiency matters only for successful paths. Weight: 0.05 max.
+        // Step efficiency matters only for successful paths. Weight: 0.1 max.
         const efficiency =
           item.lifecycle === 'completed' && item.steps > 0
-            ? 0.05 * (minSteps / item.steps)
+            ? 0.1 * (minSteps / item.steps)
             : 0;
         return { ...item, score: Math.min(1, Number((item.score + efficiency).toFixed(3))) };
       })
