@@ -12,6 +12,8 @@ import { configPath, loadDistillConfig } from '../core/config.ts';
 import { loadAutoDistillConfig, loadConfig, saveConfig } from '../core/config.ts';
 import { distillSessions } from '../distill/run.ts';
 import { listUnits, setUnitStatus } from '../core/units.ts';
+import { decayStaleUnits, updateUnitUsage } from '../core/units.ts';
+import { activateSkill, draftSkill, recordSkillOutcome } from '../skills/build.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
 import { listAdapters } from '../adapters/index.ts';
@@ -37,6 +39,7 @@ function open() {
 
 function runImport(): void {
   const db = open();
+  updateUnitUsage(db);
   const hooks = ingestHookDir(db, hookRawDir());
   const sessions = ingestAllSessions(db, `${clineDataDir()}/sessions`);
   const segments = backfillTurnSegments(db);
@@ -512,7 +515,66 @@ function runReport(): void {
   console.log(`units      active=${fmt(active)} candidate=${fmt(candidates)} rejected=${fmt(rejected)}`);
   console.log(`adoption   ${adoption}%`);
   console.log(`injections ${fmt(injection.c)}  unit-carrying rate ${(injection.unit_rate * 100).toFixed(0)}%  avg ${injection.chars.toFixed(0)} chars`);
+  const stale = db
+    .prepare(
+      `SELECT id, statement FROM memory_units
+       WHERE status = 'active' AND (use_count IS NULL OR use_count = 0) LIMIT 10`
+    )
+    .all() as Array<{ id: number; statement: string }>;
+  if (stale.length > 0) {
+    console.log('stale candidates (no injection usage)');
+    for (const row of stale) console.log(`  ${row.id}  ${row.statement.slice(0, 60)}`);
+  }
   for (const row of days) console.log(`  ${row.day}  ${fmt(row.c)} injections`);
+  db.close();
+}
+
+function runDecay(): void {
+  const daysArg = args.indexOf('--days');
+  const days = daysArg >= 0 ? Number(args[daysArg + 1]) : 14;
+  const db = open();
+  const decayed = decayStaleUnits(db, days);
+  const profile = writeProfileSnapshot(db);
+  db.close();
+  console.log(`decayed ${fmt(decayed)} units older than ${days} days with no usage`);
+  console.log(profile.changed ? `profile updated -> ${profile.path}` : 'profile unchanged');
+}
+
+async function runSkills(): Promise<void> {
+  const sub = args[0] ?? 'list';
+  const db = open();
+  if (sub === 'list') {
+    const rows = db
+      .prepare(
+        `SELECT id, name, status, use_count, success_count, fail_count, path FROM skills ORDER BY id DESC LIMIT 50`
+      )
+      .all() as Array<Record<string, any>>;
+    for (const row of rows) {
+      console.log(
+        `${row.id}  [${row.status}] ${row.name}  use=${row.use_count ?? 0} ok=${row.success_count ?? 0} fail=${row.fail_count ?? 0}${row.path ? `  ${row.path}` : ''}`
+      );
+    }
+    console.log(`${rows.length} skills`);
+  } else if (sub === 'draft') {
+    const config = loadDistillConfig();
+    const id = await draftSkill(db, config);
+    console.log(id ? `draft skill ${id} created; review with: memctl skills list` : 'no procedure evidence to crystallize yet');
+  } else if (sub === 'approve') {
+    const id = Number(args[1]);
+    const result = activateSkill(db, id);
+    console.log(result ? `skill ${id} active -> ${result.path}` : `skill ${id} not found`);
+  } else if (sub === 'reject' || sub === 'retire') {
+    const id = Number(args[1]);
+    const status = sub === 'reject' ? 'rejected' : 'retired';
+    const result = db.prepare('UPDATE skills SET status = ?, updated_at = ? WHERE id = ?').run(status, new Date().toISOString(), id);
+    console.log(Number(result.changes ?? 0) > 0 ? `skill ${id} -> ${status}` : `skill ${id} not found`);
+  } else if (sub === 'outcome') {
+    const id = Number(args[1]);
+    const success = args.includes('--success');
+    console.log(recordSkillOutcome(db, id, success) ? `skill ${id} outcome recorded (${success ? 'success' : 'fail'})` : `skill ${id} not found`);
+  } else {
+    console.log('memctl skills <list|draft|approve <id>|reject <id>|retire <id>|outcome <id> --success|--fail>');
+  }
   db.close();
 }
 
@@ -645,6 +707,12 @@ switch (command) {
     break;
   case 'semantic':
     await runSemantic();
+    break;
+  case 'decay':
+    runDecay();
+    break;
+  case 'skills':
+    await runSkills();
     break;
   default:
     console.log('memctl <import|status|sessions|search|tools>');

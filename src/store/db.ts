@@ -22,6 +22,10 @@ export function openDb(path: string): DatabaseSync {
   if (!unitColumns.some((column) => column.name === 'supersedes_id')) {
     db.exec('ALTER TABLE memory_units ADD COLUMN supersedes_id INTEGER');
   }
+  const toolColumns = db.prepare('PRAGMA table_info(tool_calls)').all() as Array<{ name: string }>;
+  if (!toolColumns.some((column) => column.name === 'blob_hash')) {
+    db.exec('ALTER TABLE tool_calls ADD COLUMN blob_hash TEXT');
+  }
   // Fill segments before the segmented triggers exist, so no trigger deletes
   // rows from an index that was never built.
   backfillTurnSegments(db);

@@ -11,6 +11,7 @@ import { generateSessionCards } from '../ingest/cards.ts';
 import { loadAutoDistillConfig, loadDistillConfig } from '../core/config.ts';
 import { distillSessions } from '../distill/run.ts';
 import { ingestInjectionDir, ingestInjectionFile } from '../ingest/injections.ts';
+import { updateUnitUsage } from '../core/units.ts';
 import { openDb } from '../store/db.ts';
 
 export interface DaemonOptions {
@@ -42,10 +43,11 @@ export function startDaemon(options: DaemonOptions = {}): () => void {
     const sessions = ingestAllSessions(db, sessionsRoot);
     const segments = backfillTurnSegments(db);
     const cards = generateSessionCards(db);
+    const usage = updateUnitUsage(db);
     const linked = correlateSessions(db);
     const merged = mergeHookToolDurations(db);
     log(
-      `${reason}: hooks +${hooks.events}/${hooks.files} files, sessions ${sessions}, segments ${segments}, cards ${cards}, linked ${linked}, tool_durations ${merged}`
+      `${reason}: hooks +${hooks.events}/${hooks.files} files, sessions ${sessions}, segments ${segments}, cards ${cards}, usage ${usage}, linked ${linked}, tool_durations ${merged}`
     );
   }
 

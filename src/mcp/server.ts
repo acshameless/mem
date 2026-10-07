@@ -4,6 +4,10 @@ import { existsSync } from 'node:fs';
 import { DatabaseSync } from 'node:sqlite';
 import { memDbPath } from '../core/paths.ts';
 import { searchTurns } from '../core/recall.ts';
+import { openDb } from '../store/db.ts';
+import { applyFeedback, insertUnit } from '../core/units.ts';
+import { forgetSession, forgetUnit } from '../core/forget.ts';
+import { buildProfile } from '../profile/build.ts';
 
 // Minimal MCP stdio server. One JSON-RPC message per line.
 
@@ -32,6 +36,64 @@ const tools = [
     name: 'mem_status',
     description: 'Show local memory store statistics. Read-only.',
     inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'mem_remember',
+    description: 'Store a candidate memory unit. Candidates never auto-activate.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        content: { type: 'string' },
+        type: {
+          type: 'string',
+          enum: ['taste', 'preference', 'decision', 'fact', 'procedure', 'pitfall'],
+        },
+        detail: { type: 'string' },
+        scope: { type: 'string' },
+      },
+      required: ['content'],
+    },
+  },
+  {
+    name: 'mem_feedback',
+    description: 'Report whether a memory unit was useful or wrong.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        unit_id: { type: 'number' },
+        signal: { type: 'string', enum: ['useful', 'wrong'] },
+        note: { type: 'string' },
+      },
+      required: ['unit_id', 'signal'],
+    },
+  },
+  {
+    name: 'mem_taste',
+    description: 'Return the current active TASTE profile.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'mem_search_raw',
+    description: 'Search raw conversation turns with pagination.',
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string' }, limit: { type: 'number' }, offset: { type: 'number' } },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'mem_forget',
+    description: 'Delete a session or unit. Requires confirm=true.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string' },
+        unit_id: { type: 'number' },
+        include_active: { type: 'boolean' },
+        confirm: { type: 'boolean' },
+      },
+      required: ['confirm'],
+    },
   },
 ];
 
@@ -106,6 +168,19 @@ function status(): string {
   return `<memory_status>${JSON.stringify(data)}</memory_status>`;
 }
 
+function withWriteDb<T>(fn: (db: ReturnType<typeof openDb>) => T, fallback: T): T {
+  try {
+    const db = openDb(memDbPath());
+    try {
+      return fn(db);
+    } finally {
+      db.close();
+    }
+  } catch {
+    return fallback;
+  }
+}
+
 function handle(message: JsonRpc): void {
   const { id, method, params } = message;
 
@@ -147,6 +222,112 @@ function handle(message: JsonRpc): void {
           jsonrpc: '2.0',
           id: id ?? null,
           result: { content: [{ type: 'text', text: status() }] },
+        });
+        return;
+      }
+      if (name === 'mem_remember') {
+        const content = String(args.content ?? '').trim();
+        if (content.length < 4) throw new Error('content too short');
+        const unitId = withWriteDb(
+          (db) =>
+            insertUnit(db, {
+              type: String(args.type ?? 'fact'),
+              statement: content,
+              detail: args.detail ? String(args.detail) : null,
+              scope: args.scope ? String(args.scope) : 'person',
+              status: 'candidate',
+              evidence: [{ source: 'mcp', note: 'mem_remember' }],
+            }),
+          0
+        );
+        send({
+          jsonrpc: '2.0',
+          id: id ?? null,
+          result: { content: [{ type: 'text', text: `<memory_unit id="${unitId}" status="candidate"/>` }] },
+        });
+        return;
+      }
+      if (name === 'mem_feedback') {
+        const result = withWriteDb(
+          (db) =>
+            applyFeedback(
+              db,
+              Number(args.unit_id),
+              args.signal === 'wrong' ? 'wrong' : 'useful',
+              args.note ? String(args.note) : undefined
+            ),
+          null
+        );
+        send({
+          jsonrpc: '2.0',
+          id: id ?? null,
+          result: {
+            content: [
+              {
+                type: 'text',
+                text: result
+                  ? `<feedback unit="${args.unit_id}" confidence="${result.confidence.toFixed(3)}" status="${result.status}"/>`
+                  : '<feedback error="unit not found"/>',
+              },
+            ],
+          },
+        });
+        return;
+      }
+      if (name === 'mem_taste') {
+        const profile = withDb((db) => buildProfile(db).markdown, '(unavailable)');
+        send({
+          jsonrpc: '2.0',
+          id: id ?? null,
+          result: { content: [{ type: 'text', text: profile }] },
+        });
+        return;
+      }
+      if (name === 'mem_search_raw') {
+        const query = String(args.query ?? '').trim();
+        const limit = Math.max(1, Math.min(20, Number(args.limit ?? 5) || 5));
+        const offset = Math.max(0, Number(args.offset ?? 0) || 0);
+        const rows = withDb(
+          (db) => searchTurns(db, query, { limit: Math.min(20, limit + offset) }).slice(offset),
+          []
+        );
+        const text = rows
+          .map(
+            (row) =>
+              `[${row.session_id}#${row.turn_index}] ${row.role}: ${String(row.snip).replace(/\s+/g, ' ').slice(0, 200)}`
+          )
+          .join('\n');
+        send({
+          jsonrpc: '2.0',
+          id: id ?? null,
+          result: { content: [{ type: 'text', text: text || 'no matches' }] },
+        });
+        return;
+      }
+      if (name === 'mem_forget') {
+        if (args.confirm !== true) {
+          send({
+            jsonrpc: '2.0',
+            id: id ?? null,
+            result: {
+              content: [{ type: 'text', text: 'refused: pass confirm=true after user approval' }],
+              isError: true,
+            },
+          });
+          return;
+        }
+        const result = withWriteDb((db) => {
+          if (args.session_id) return `forgotten session ${args.session_id}: ${JSON.stringify(forgetSession(db, String(args.session_id), { includeActive: args.include_active === true }).counts)}`;
+          if (args.unit_id) {
+            const statement = forgetUnit(db, Number(args.unit_id));
+            return statement ? `forgotten unit ${args.unit_id}` : 'unit not found';
+          }
+          return 'nothing to forget';
+        }, 'forget failed');
+        send({
+          jsonrpc: '2.0',
+          id: id ?? null,
+          result: { content: [{ type: 'text', text: result }] },
         });
         return;
       }

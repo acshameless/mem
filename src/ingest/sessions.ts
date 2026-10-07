@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { segmentForSearch } from '../core/tokenize.ts';
 import { isForgotten } from '../core/forget.ts';
+import { storeBlob } from '../core/blobs.ts';
 
 interface ContentBlock {
   type?: string;
@@ -102,7 +103,7 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
   const updateToolResult = db.prepare(
-    `UPDATE tool_calls SET result_text = ?, success = ?
+    `UPDATE tool_calls SET result_text = ?, success = ?, blob_hash = ?
      WHERE session_id = ? AND tool_call_id = ?`
   );
 
@@ -142,12 +143,22 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
         );
       }
       if (block.type === 'tool_result' && block.tool_use_id) {
-        const resultText =
+        let resultText =
           typeof block.content === 'string' ? block.content : JSON.stringify(block.content ?? null);
+        let blobHash: string | null = null;
+        if (resultText.length > 8192) {
+          try {
+            const blob = storeBlob(db, resultText);
+            blobHash = blob.hash;
+            resultText = `${resultText.slice(0, 2000)}\n\n[blob ${blob.hash} size=${blob.size}]`;
+          } catch {
+            blobHash = null;
+          }
+        }
         const items = Array.isArray(block.content) ? (block.content as Array<Record<string, unknown>>) : [];
         const success =
           block.is_error === true || items.some((item) => item.success === false) ? 0 : 1;
-        updateToolResult.run(resultText, success, id, block.tool_use_id);
+        updateToolResult.run(resultText, success, blobHash, id, block.tool_use_id);
       }
     });
   });

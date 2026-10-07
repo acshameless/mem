@@ -230,3 +230,73 @@ export function topPersonUnits(db: DatabaseSync, limit = 2): MemoryUnitRow[] {
     return [];
   }
 }
+
+export function applyFeedback(
+  db: DatabaseSync,
+  unitId: number,
+  signal: 'useful' | 'wrong',
+  note?: string
+): { confidence: number; status: string } | null {
+  const unit = db
+    .prepare('SELECT id, confidence, status FROM memory_units WHERE id = ?')
+    .get(unitId) as { id: number; confidence: number; status: string } | undefined;
+  if (!unit) return null;
+  const delta = signal === 'useful' ? 0.05 : -0.15;
+  const confidence = Math.max(0, Math.min(1, Number(unit.confidence) + delta));
+  const status = confidence < 0.2 && unit.status === 'active' ? 'candidate' : unit.status;
+  const now = new Date().toISOString();
+  db.prepare('UPDATE memory_units SET confidence = ?, status = ?, updated_at = ? WHERE id = ?').run(
+    confidence,
+    status,
+    now,
+    unitId
+  );
+  db.prepare(
+    'INSERT INTO unit_feedback (unit_id, signal, note, created_at) VALUES (?, ?, ?, ?)'
+  ).run(unitId, signal, note ?? null, now);
+  return { confidence, status };
+}
+
+// Refresh usage counters from the injection log.
+export function updateUnitUsage(db: DatabaseSync): number {
+  const usage = new Map<number, number>();
+  try {
+    const rows = db.prepare('SELECT unit_ids_json FROM injections').all() as Array<{
+      unit_ids_json: string | null;
+    }>;
+    for (const row of rows) {
+      try {
+        for (const id of JSON.parse(row.unit_ids_json ?? '[]') as number[]) {
+          usage.set(id, (usage.get(id) ?? 0) + 1);
+        }
+      } catch {
+        // Ignore malformed rows.
+      }
+    }
+  } catch {
+    return 0;
+  }
+  const update = db.prepare('UPDATE memory_units SET use_count = ? WHERE id = ?');
+  let updated = 0;
+  for (const [id, count] of usage) {
+    updated += Number(update.run(count, id).changes ?? 0);
+  }
+  return updated;
+}
+
+export function decayStaleUnits(db: DatabaseSync, days = 14): number {
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const rows = db
+    .prepare(
+      `SELECT id, confidence FROM memory_units
+       WHERE status = 'active' AND (use_count IS NULL OR use_count = 0)
+         AND created_at IS NOT NULL AND created_at < ?`
+    )
+    .all(cutoff) as Array<{ id: number; confidence: number }>;
+  const update = db.prepare('UPDATE memory_units SET confidence = ?, updated_at = ? WHERE id = ?');
+  const now = new Date().toISOString();
+  for (const row of rows) {
+    update.run(Math.max(0, Number(row.confidence) - 0.05), now, row.id);
+  }
+  return rows.length;
+}

@@ -79,11 +79,27 @@ function renderMemoryBlock(
         `${escapeXml(String(unit.statement).slice(0, 240))}</item>`
     );
   const projectItems = units
-    .filter((unit) => unit.type === 'decision' || unit.type === 'fact')
+    .filter((unit) => unit.type === 'decision')
     .slice(0, 3)
     .map(
       (unit) =>
         `    <item id="${unit.id}" type="${escapeXml(unit.type)}" confidence="${unit.confidence}">` +
+        `${escapeXml(String(unit.statement).slice(0, 240))}</item>`
+    );
+  const factItems = units
+    .filter((unit) => unit.type === 'fact')
+    .slice(0, 3)
+    .map(
+      (unit) =>
+        `    <item id="${unit.id}" confidence="${unit.confidence}">` +
+        `${escapeXml(String(unit.statement).slice(0, 240))}</item>`
+    );
+  const procedureItems = units
+    .filter((unit) => unit.type === 'procedure')
+    .slice(0, 3)
+    .map(
+      (unit) =>
+        `    <item id="${unit.id}" confidence="${unit.confidence}">` +
         `${escapeXml(String(unit.statement).slice(0, 240))}</item>`
     );
   const tasteSection =
@@ -96,8 +112,18 @@ function renderMemoryBlock(
     pitfallItems.length > 0 ? `  <pitfalls>\n${pitfallItems.join('\n')}\n  </pitfalls>\n` : '';
   const projectSection =
     projectItems.length > 0 ? `  <project>\n${projectItems.join('\n')}\n  </project>\n` : '';
+  const factSection = factItems.length > 0 ? `  <facts>\n${factItems.join('\n')}\n  </facts>\n` : '';
+  const procedureSection =
+    procedureItems.length > 0
+      ? `  <procedures>\n${procedureItems.join('\n')}\n  </procedures>\n`
+      : '';
   used +=
-    tasteSection.length + preferenceSection.length + pitfallSection.length + projectSection.length;
+    tasteSection.length +
+    preferenceSection.length +
+    pitfallSection.length +
+    projectSection.length +
+    factSection.length +
+    procedureSection.length;
 
   for (const card of cards) {
     const goal = String(card.goal ?? '').replace(/\s+/g, ' ').trim().slice(0, 240);
@@ -170,6 +196,8 @@ function renderMemoryBlock(
   if (preferenceSection) sections.push('preferences');
   if (pitfallSection) sections.push('pitfalls');
   if (projectSection) sections.push('project');
+  if (factSection) sections.push('facts');
+  if (procedureSection) sections.push('procedures');
   if (cardsSection) sections.push('cards');
   if (pastSection) sections.push('past');
   const block =
@@ -179,6 +207,8 @@ function renderMemoryBlock(
     preferenceSection +
     pitfallSection +
     projectSection +
+    factSection +
+    procedureSection +
     cardsSection +
     pastSection +
     '</memory>';

@@ -250,3 +250,37 @@ CREATE TABLE IF NOT EXISTS embeddings (
   model TEXT,
   created_at TEXT
 );
+
+CREATE TABLE IF NOT EXISTS unit_feedback (
+  id INTEGER PRIMARY KEY,
+  unit_id INTEGER NOT NULL,
+  signal TEXT NOT NULL,
+  note TEXT,
+  created_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_unit ON unit_feedback(unit_id);
+
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  slug TEXT NOT NULL,
+  description TEXT,
+  body TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',
+  evidence_json TEXT,
+  source_units_json TEXT,
+  path TEXT,
+  use_count INTEGER DEFAULT 0,
+  success_count INTEGER DEFAULT 0,
+  fail_count INTEGER DEFAULT 0,
+  created_at TEXT,
+  updated_at TEXT,
+  activated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS blobs (
+  hash TEXT PRIMARY KEY,
+  size INTEGER NOT NULL,
+  path TEXT NOT NULL,
+  created_at TEXT
+);

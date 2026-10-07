@@ -58,7 +58,15 @@ test('mcp server answers initialize, tools/list, and mem_recall', async () => {
 
     const list = await request(2, 'tools/list');
     const names = list.result.tools.map((tool: any) => tool.name);
-    assert.deepEqual(names, ['mem_recall', 'mem_status']);
+    assert.deepEqual(names, [
+      'mem_recall',
+      'mem_status',
+      'mem_remember',
+      'mem_feedback',
+      'mem_taste',
+      'mem_search_raw',
+      'mem_forget',
+    ]);
 
     const recall = await request(3, 'tools/call', {
       name: 'mem_recall',
@@ -70,6 +78,19 @@ test('mcp server answers initialize, tools/list, and mem_recall', async () => {
 
     const status = await request(4, 'tools/call', { name: 'mem_status', arguments: {} });
     assert.match(status.result.content[0].text as string, /"sessions":3/);
+
+    const remember = await request(5, 'tools/call', {
+      name: 'mem_remember',
+      arguments: { content: '测试写入的候选记忆', type: 'taste' },
+    });
+    const idMatch = /id="(\d+)"/.exec(remember.result.content[0].text as string);
+    assert.ok(idMatch, 'mem_remember must return an id');
+
+    const feedback = await request(6, 'tools/call', {
+      name: 'mem_feedback',
+      arguments: { unit_id: Number(idMatch![1]), signal: 'useful' },
+    });
+    assert.match(feedback.result.content[0].text as string, /confidence=/);
   } finally {
     child.kill('SIGTERM');
   }
