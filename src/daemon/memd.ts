@@ -13,6 +13,8 @@ import { distillSessions } from '../distill/run.ts';
 import { ingestInjectionDir, ingestInjectionFile } from '../ingest/injections.ts';
 import { updateUnitUsage } from '../core/units.ts';
 import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
+import { ingestHookAttachments } from '../ingest/attachments.ts';
+import { rebuildPaths } from '../core/trajectory.ts';
 import { openDb } from '../store/db.ts';
 
 export interface DaemonOptions {
@@ -52,9 +54,11 @@ export function startDaemon(options: DaemonOptions = {}): () => void {
     const usage = updateUnitUsage(db);
     const linked = correlateSessions(db);
     const lifecycle = updateSessionLifecycle(db);
+    const attachments = ingestHookAttachments(db);
+    const paths = rebuildPaths(db);
     const merged = mergeHookToolDurations(db);
     log(
-      `${reason}: hooks +${hooks.events}/${hooks.files} files, sessions ${sessions}, segments ${segments}, cards ${cards}, usage ${usage}, linked ${linked}, lifecycle ${lifecycle}, tool_durations ${merged}`
+      `${reason}: hooks +${hooks.events}/${hooks.files} files, sessions ${sessions}, segments ${segments}, cards ${cards}, usage ${usage}, linked ${linked}, lifecycle ${lifecycle}, attachments ${attachments}, paths ${paths}, tool_durations ${merged}`
     );
   }
 

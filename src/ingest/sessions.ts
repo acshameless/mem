@@ -1,9 +1,9 @@
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { segmentForSearch } from '../core/tokenize.ts';
 import { isForgotten } from '../core/forget.ts';
-import { storeBlob } from '../core/blobs.ts';
+import { storeBlob, storeBlobBuffer } from '../core/blobs.ts';
 
 interface ContentBlock {
   type?: string;
@@ -160,10 +160,83 @@ export function ingestSessionDir(db: DatabaseSync, dir: string): boolean {
           block.is_error === true || items.some((item) => item.success === false) ? 0 : 1;
         updateToolResult.run(resultText, success, blobHash, id, block.tool_use_id);
       }
+      if (
+        block.type === 'image' ||
+        block.type === 'file' ||
+        block.type === 'document' ||
+        block.type === 'attachment'
+      ) {
+        try {
+          captureBlockAttachment(db, id, block as Record<string, any>);
+        } catch {
+          // Attachment capture is best effort.
+        }
+      }
     });
   });
 
+  try {
+    captureArtifacts(db, dir, id);
+  } catch {
+    // Checkpoint and artifact capture is best effort.
+  }
   return true;
+}
+
+function captureBlockAttachment(
+  db: DatabaseSync,
+  sessionId: string,
+  block: Record<string, any>
+): void {
+  const source = (block.source ?? {}) as Record<string, any>;
+  const mime = String(
+    source.media_type ?? block.mimeType ?? block.mime ?? 'application/octet-stream'
+  );
+  const data = source.data ?? block.data ?? block.base64;
+  let blob: { hash: string; size: number } | null = null;
+  let relpath: string | null = null;
+  if (typeof data === 'string' && data.length > 0) {
+    blob = storeBlobBuffer(db, Buffer.from(data, 'base64'));
+  } else {
+    const filePath = block.path ?? block.file_path ?? block.filePath;
+    if (typeof filePath === 'string' && existsSync(filePath)) {
+      blob = storeBlobBuffer(db, readFileSync(filePath));
+      relpath = filePath;
+    }
+  }
+  if (!blob) return;
+  db.prepare(
+    `INSERT OR IGNORE INTO attachments
+       (origin, session_id, task_id, kind, mime, hash, relpath, size, created_at)
+     VALUES ('session', ?, NULL, ?, ?, ?, ?, ?, ?)`
+  ).run(sessionId, String(block.type ?? 'file'), mime, blob.hash, relpath, blob.size, new Date().toISOString());
+}
+
+function captureArtifacts(db: DatabaseSync, sessionDir: string, sessionId: string): void {
+  const known = new Set([`${sessionId}.json`, `${sessionId}.messages.json`]);
+  const files: string[] = [];
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else files.push(path);
+    }
+  };
+  walk(sessionDir);
+  const upsert = db.prepare(
+    `INSERT INTO artifacts (session_id, relpath, hash, size, created_at)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(session_id, relpath) DO UPDATE SET
+       hash=excluded.hash, size=excluded.size, created_at=excluded.created_at`
+  );
+  for (const file of files) {
+    const relpath = relative(sessionDir, file);
+    if (known.has(relpath)) continue;
+    const stat = statSync(file);
+    if (!stat.isFile() || stat.size > 5 * 1024 * 1024) continue;
+    const blob = storeBlobBuffer(db, readFileSync(file));
+    upsert.run(sessionId, relpath, blob.hash, blob.size, new Date().toISOString());
+  }
 }
 
 export function ingestAllSessions(db: DatabaseSync, root: string): number {

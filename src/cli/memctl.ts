@@ -20,6 +20,9 @@ import { redactRawStore, scanStore } from '../core/scan.ts';
 import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
 import { runTui } from '../tui/review.ts';
 import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
+import { defaultHooksDir, hooksDoctor } from '../core/hooks_doctor.ts';
+import { ingestHookAttachments } from '../ingest/attachments.ts';
+import { listPaths, rebuildPaths } from '../core/trajectory.ts';
 import { runApp } from '../tui/app.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
@@ -33,6 +36,7 @@ import { loadEmbeddingConfig } from '../core/config.ts';
 import { embedPendingTurns, semanticSearch } from '../embed/embed.ts';
 import { embedTexts } from '../embed/embed.ts';
 import { EMBEDDING_PRESETS } from '../embed/presets.ts';
+import { LLM_PRESETS } from '../distill/presets.ts';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync as readFile } from 'node:fs';
 import { join } from 'node:path';
@@ -60,6 +64,8 @@ function runImport(): void {
   const codex = ingestCodexDir(db, codexSessionsRoot());
   const linked = correlateSessions(db);
   const lifecycle = updateSessionLifecycle(db);
+  const attachments = ingestHookAttachments(db);
+  const paths = rebuildPaths(db);
   const merged = mergeHookToolDurations(db);
   console.log(`db        ${memDbPath()}`);
   console.log(`hooks     ${fmt(hooks.events)} new events from ${fmt(hooks.files)} files`);
@@ -71,6 +77,8 @@ function runImport(): void {
   console.log(`codex     ${fmt(codex)} sessions imported from ${codexSessionsRoot()}`);
   console.log(`linked    ${fmt(linked)} sessions correlated to hook tasks`);
   console.log(`lifecycle ${fmt(lifecycle)} sessions classified (completed/cancelled/failed/aborted_unknown)`);
+  console.log(`attach    ${fmt(attachments)} hook attachments stored (images/files)`);
+  console.log(`paths     ${fmt(paths)} goal groups scored`);
   console.log(`tools     ${fmt(merged)} tool calls enriched with hook durations`);
   db.close();
 }
@@ -489,6 +497,50 @@ function runScan(): void {
   db.close();
 }
 
+function runHooks(): void {
+  const dir = args[0] && !args[0].startsWith('-') ? args[0] : defaultHooksDir();
+  const db = open();
+  const rows = hooksDoctor(db, dir);
+  console.log(`hooks dir  ${dir}`);
+  console.log('event             installed  last seen             count  health');
+  let errors = 0;
+  let warnings = 0;
+  for (const row of rows) {
+    if (row.health === 'missing' || row.health === 'not_executable') errors += 1;
+    if (row.health === 'warn_never_fired') warnings += 1;
+    console.log(
+      `${row.event.padEnd(17)} ${row.installed ? (row.executable ? 'yes      ' : 'no-exec  ') : 'no       '} ` +
+        `${(row.lastSeen ?? '-').slice(0, 22).padEnd(22)} ${String(row.count).padStart(5)}  ${row.health}`
+    );
+  }
+  console.log(
+    errors === 0
+      ? `hooks ok (${warnings} event(s) not seen yet; this is normal)`
+      : `${errors} hook(s) are missing or not executable`
+  );
+  db.close();
+  if (errors > 0) process.exitCode = 1;
+}
+
+function runPaths(): void {
+  const db = open();
+  const limitArg = args.find((value) => /^\d+$/.test(value));
+  if (args.includes('--rebuild') || listPaths(db, 1).length === 0) {
+    rebuildPaths(db);
+  }
+  const rows = listPaths(db, limitArg ? Number(limitArg) : 50);
+  console.log('score  best session           members  goal');
+  for (const row of rows) {
+    console.log(
+      `${row.score.toFixed(2)}   ${String(row.best_session_id ?? '-').padEnd(21)} ${String(
+        row.session_ids.length
+      ).padStart(4)}     ${String(row.goal).replace(/\s+/g, ' ').slice(0, 70)}`
+    );
+  }
+  console.log(`${rows.length} path group(s)`);
+  db.close();
+}
+
 function runTaskPrefs(): void {
   const sub = args[0] === 'tasks' || !args[0] ? 'list' : args[0];
   const db = open();
@@ -782,6 +834,27 @@ function runEmbeddingPreset(): void {
   console.log('check: memctl embed --check');
 }
 
+function runLlmPreset(): void {
+  const name = args[1];
+  const preset = name ? LLM_PRESETS[name] : undefined;
+  if (!preset) {
+    console.log(`memctl llm preset <${Object.keys(LLM_PRESETS).join('|')}>`);
+    return;
+  }
+  const config = loadConfig();
+  const existing = loadDistillConfig();
+  config.distill = {
+    ...preset,
+    apiKey: existing.apiKey && !preset.apiKey ? existing.apiKey : preset.apiKey,
+  };
+  saveConfig(config);
+  console.log(`llm preset: ${name}`);
+  console.log(`  provider ${config.distill.provider}`);
+  console.log(`  baseUrl  ${config.distill.baseUrl}`);
+  console.log(`  model    ${config.distill.model}`);
+  console.log('check: memctl distill --dry-run --limit 1');
+}
+
 async function runSemantic(): Promise<void> {
   const query = args.join(' ').trim();
   if (!query) {
@@ -884,6 +957,12 @@ switch (command) {
   case 'scan':
     runScan();
     break;
+  case 'hooks':
+    runHooks();
+    break;
+  case 'paths':
+    runPaths();
+    break;
   case 'on':
   case 'off':
   case 'capture-on':
@@ -918,6 +997,9 @@ switch (command) {
     break;
   case 'embedding':
     runEmbeddingPreset();
+    break;
+  case 'llm':
+    runLlmPreset();
     break;
   case 'semantic':
     await runSemantic();

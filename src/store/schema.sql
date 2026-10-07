@@ -295,6 +295,46 @@ CREATE TABLE IF NOT EXISTS blobs (
   created_at TEXT
 );
 
+CREATE TABLE IF NOT EXISTS attachments (
+  id INTEGER PRIMARY KEY,
+  origin TEXT NOT NULL,
+  session_id TEXT,
+  task_id TEXT,
+  kind TEXT NOT NULL,
+  mime TEXT,
+  hash TEXT,
+  relpath TEXT,
+  size INTEGER,
+  created_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attachments_unique ON attachments(
+  origin,
+  coalesce(session_id, ''),
+  coalesce(task_id, ''),
+  kind,
+  coalesce(hash, ''),
+  coalesce(relpath, '')
+);
+
+CREATE TABLE IF NOT EXISTS artifacts (
+  id INTEGER PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  relpath TEXT NOT NULL,
+  hash TEXT NOT NULL,
+  size INTEGER,
+  created_at TEXT,
+  UNIQUE(session_id, relpath)
+);
+
+CREATE TABLE IF NOT EXISTS paths (
+  goal_key TEXT PRIMARY KEY,
+  goal TEXT NOT NULL,
+  session_ids_json TEXT NOT NULL,
+  best_session_id TEXT,
+  score REAL,
+  updated_at TEXT
+);
+
 CREATE TABLE IF NOT EXISTS task_prefs (
   task_id TEXT PRIMARY KEY,
   memory_enabled INTEGER NOT NULL DEFAULT 1,

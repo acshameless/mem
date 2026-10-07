@@ -17,7 +17,10 @@ export async function chatComplete(
   messages: ChatMessage[],
   fetchImpl: FetchLike = fetch
 ): Promise<ChatResult> {
-  if (!config.apiKey) throw new Error('missing API key in config.json');
+  const isLocalEndpoint = /localhost|127\.0\.0\.1/.test(config.baseUrl);
+  if (!config.apiKey && !isLocalEndpoint) {
+    throw new Error('missing API key in config.json');
+  }
   const url = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const body: Record<string, unknown> = {
     model: config.model,
@@ -30,7 +33,7 @@ export async function chatComplete(
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${config.apiKey}`,
+        ...(config.apiKey ? { Authorization: `Bearer ${config.apiKey}` } : {}),
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(180_000),

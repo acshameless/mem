@@ -63,10 +63,12 @@ export function loadConfig(): MemConfig {
 export function loadDistillConfig(): DistillConfig {
   const config = loadConfig();
   const distill = config.distill ?? {};
+  const provider = distill.provider ?? 'local';
+  const isLocal = provider === 'local';
   return {
-    provider: distill.provider ?? 'deepseek',
-    baseUrl: distill.baseUrl ?? 'https://api.deepseek.com',
-    model: distill.model ?? 'deepseek-chat',
+    provider,
+    baseUrl: distill.baseUrl ?? (isLocal ? 'http://127.0.0.1:11434/v1' : 'https://api.deepseek.com'),
+    model: distill.model ?? (isLocal ? 'qwen3:8b' : 'deepseek-chat'),
     apiKey: distill.apiKey ?? '',
     maxSessionsPerRun: Math.max(1, Number(distill.maxSessionsPerRun ?? 20) || 20),
     maxCharsPerSession: Math.max(1000, Number(distill.maxCharsPerSession ?? 8000) || 8000),

@@ -23,6 +23,22 @@ export function storeBlob(
   return { hash, path, size: Buffer.byteLength(text) };
 }
 
+export function storeBlobBuffer(
+  db: DatabaseSync,
+  data: Buffer,
+  ext = 'bin'
+): { hash: string; path: string; size: number } {
+  const hash = createHash('sha256').update(data).digest('hex');
+  const dir = blobsDir();
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, `${hash}.${ext}`);
+  if (!existsSync(path)) writeFileSync(path, data, { mode: 0o600 });
+  db.prepare(
+    `INSERT OR IGNORE INTO blobs (hash, size, path, created_at) VALUES (?, ?, ?, ?)`
+  ).run(hash, data.length, path, new Date().toISOString());
+  return { hash, path, size: data.length };
+}
+
 export function readBlob(hash: string): string | null {
   const path = join(blobsDir(), `${hash}.txt`);
   if (!existsSync(path)) return null;

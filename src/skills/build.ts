@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import type { DistillConfig } from '../core/config.ts';
 import { chatComplete, type FetchLike } from '../distill/provider.ts';
+import { bestPathTools } from '../core/trajectory.ts';
 
 interface ProcedureUnit {
   id: number;
@@ -15,6 +16,7 @@ export interface SkillSources {
   units: ProcedureUnit[];
   sessions: string[];
   repeated: Array<{ sequence: string; sessions: string[] }>;
+  paths: Array<{ goal: string; bestSessionId: string; score: number; tools: string[] }>;
 }
 
 export function collectSkillSources(db: DatabaseSync): SkillSources {
@@ -56,7 +58,22 @@ export function collectSkillSources(db: DatabaseSync): SkillSources {
   const repeated = [...grouped.entries()]
     .filter(([, list]) => list.length >= 2)
     .map(([sequence, list]) => ({ sequence, sessions: list }));
-  return { units, sessions, repeated };
+  let paths: SkillSources['paths'] = [];
+  try {
+    paths = (
+      db
+        .prepare('SELECT goal, best_session_id, score FROM paths ORDER BY score DESC LIMIT 5')
+        .all() as Array<{ goal: string; best_session_id: string; score: number }>
+    ).map((row) => ({
+      goal: row.goal,
+      bestSessionId: row.best_session_id,
+      score: row.score,
+      tools: bestPathTools(db, row.best_session_id),
+    }));
+  } catch {
+    paths = [];
+  }
+  return { units, sessions, repeated, paths };
 }
 
 function slugify(name: string): string {
@@ -77,6 +94,17 @@ function heuristicDraft(sources: SkillSources): { name: string; description: str
       body:
         '## 步骤\n' +
         sources.units.map((unit, index) => `${index + 1}. ${unit.statement}`).join('\n'),
+    };
+  }
+  if (sources.paths.length > 0 && sources.paths[0].tools.length > 0) {
+    const best = sources.paths[0];
+    return {
+      name: `已验证流程 ${best.tools.slice(0, 3).join(' → ')}`,
+      description: `来自最优路径（score ${best.score}）：${best.goal.slice(0, 80)}`,
+      body:
+        '## 步骤\n' +
+        best.tools.map((tool, index) => `${index + 1}. 调用 \`${tool}\``).join('\n') +
+        `\n\n## 证据\n最优会话 ${best.bestSessionId}，评分 ${best.score}。`,
     };
   }
   const sequence = sources.repeated[0].sequence.split('>');
@@ -107,6 +135,14 @@ export async function draftSkill(
         '\n\n重复工具流程：\n' +
         sources.repeated
           .map((item) => `- ${item.sequence}（${item.sessions.length} 次）`)
+          .join('\n') +
+        '\n\n已验证的最优路径（按 score 排序，优先参考）：\n' +
+        sources.paths
+          .map(
+            (item) =>
+              `- ${item.goal.slice(0, 80)}（score ${item.score}，会话 ${item.bestSessionId}）：` +
+              item.tools.join(' → ')
+          )
           .join('\n');
       const result = await chatComplete(
         config,
