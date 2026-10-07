@@ -60,6 +60,13 @@ Get-ScheduledTask mem-daemon | Start-ScheduledTask
 Get-ScheduledTask mem-daemon | Stop-ScheduledTask
 Get-Content $HOME\.llm-memory\logs\memd.out.log -Tail 20
 
+# 全功能 TUI（Windows Terminal / PowerShell 均可）
+memctl tui            # 9 屏应用：Dashboard/Sessions/Search/Candidates/Active/Skills/Tasks/Metrics/Config
+memctl tui --review   # 只看候选审核
+
+# 中文显示异常时（老版控制台代码页）
+chcp 65001
+
 # 卸载
 powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 ```
@@ -76,6 +83,8 @@ powershell -ExecutionPolicy Bypass -File scripts\windows\uninstall.ps1
 | PowerShell 策略限制 | 安装时用 `-ExecutionPolicy Bypass`；Cline 自身以 `powershell -File` 执行 hook |
 | 通知不弹 | 检查系统通知设置；`review --notify` 失败不影响命令本身 |
 | daemon 无输出 | 日志同时写入 `%USERPROFILE%\.llm-memory\logs\memd.out.log` |
+| TUI 中文乱码 | 用 Windows Terminal，或先执行 `chcp 65001`；TUI 启动时会自动尝试切换 UTF-8 |
+| TUI 无法启动（非交互） | 在管道/CI 中会自动降级为文本清单，这是预期行为 |
 
 ## 未在 Windows 实机验证的项
 

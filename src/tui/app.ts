@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadAutoDistillConfig, loadConfig, loadDistillConfig, saveConfig } from '../core/config.ts';
@@ -551,6 +552,14 @@ export function runApp(db: DatabaseSync): void {
     return;
   }
 
+  if (process.platform === 'win32') {
+    try {
+      execFileSync('chcp.com', ['65001'], { stdio: 'ignore' });
+    } catch {
+      // Code page change is best effort; Windows Terminal defaults to UTF-8.
+    }
+  }
+
   let screenIndex = 0;
   let cursor = 0;
   let rows: TuiRow[] = [];
@@ -584,6 +593,7 @@ export function runApp(db: DatabaseSync): void {
     cursor = clampIndex(cursor, rows.length);
     draw();
   };
+  process.stdout.on('resize', () => draw());
 
   const controller: AppController = {
     setStatus: (message) => {
