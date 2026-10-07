@@ -27,9 +27,14 @@ export function startDaemon(options: DaemonOptions = {}): () => void {
   mkdirSync(hooksDir, { recursive: true });
   mkdirSync(sessionsRoot, { recursive: true });
 
+  // launchd (macOS) already redirects stdout to memd.out.log; Windows Task
+  // Scheduler does not, so only write the file when there is no redirect.
+  const fileLogging = process.platform === 'win32' || process.env.MEM_LOG_FILE === '1';
+
   const log = (...parts: unknown[]) => {
     const line = `${new Date().toISOString()} ${parts.map((part) => String(part)).join(' ')}`;
     console.log(line);
+    if (!fileLogging) return;
     try {
       mkdirSync(join(memHome(), 'logs'), { recursive: true });
       appendFileSync(join(memHome(), 'logs', 'memd.out.log'), `${line}\n`);

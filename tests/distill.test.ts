@@ -6,7 +6,13 @@ import { join } from 'node:path';
 import test from 'node:test';
 import type { DistillConfig } from '../src/core/config.ts';
 import { loadAutoDistillConfig } from '../src/core/config.ts';
-import { findSimilarUnit, insertUnit, setUnitStatus } from '../src/core/units.ts';
+import {
+  decayStaleUnits,
+  findSimilarUnit,
+  insertUnit,
+  setUnitStatus,
+  updateUnitUsage,
+} from '../src/core/units.ts';
 import { distillSessions } from '../src/distill/run.ts';
 import { correlateSessions } from '../src/ingest/correlate.ts';
 import { ingestHookFile } from '../src/ingest/hooks.ts';
@@ -229,6 +235,43 @@ test('auto distill config defaults and overrides', () => {
     if (previous === undefined) delete process.env.MEM_CONFIG;
     else process.env.MEM_CONFIG = previous;
   }
+});
+
+test('usage counters and decay run on the migrated schema', () => {
+  const db = openDb(join(mkdtempSync(join(tmpdir(), 'mem-usage-')), 'memory.db'));
+  const oldId = insertUnit(db, {
+    type: 'taste',
+    statement: '长期未使用的偏好',
+    status: 'active',
+    confidence: 0.8,
+  });
+  const usedId = insertUnit(db, {
+    type: 'taste',
+    statement: '经常被注入的偏好',
+    status: 'active',
+    confidence: 0.8,
+  });
+  db.prepare(
+    `INSERT INTO injections (dedupe_key, ts, task_id, session_id, sections_json, unit_ids_json, cards, turns, chars)
+     VALUES ('k2', '2026-10-07T01:00:00Z', 't', 's', '[]', ?, 0, 0, 0)`
+  ).run(JSON.stringify([usedId]));
+  db.prepare('UPDATE memory_units SET created_at = ? WHERE id IN (?, ?)').run(
+    new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+    oldId,
+    usedId
+  );
+
+  assert.equal(updateUnitUsage(db), 1);
+  const used = db.prepare('SELECT use_count FROM memory_units WHERE id = ?').get(usedId) as {
+    use_count: number;
+  };
+  assert.equal(used.use_count, 1);
+  assert.equal(decayStaleUnits(db, 14), 1);
+  const old = db.prepare('SELECT confidence FROM memory_units WHERE id = ?').get(oldId) as {
+    confidence: number;
+  };
+  assert.ok(old.confidence < 0.8);
+  db.close();
 });
 
 test('distill handles semantic duplicates and supersedes targets', async () => {

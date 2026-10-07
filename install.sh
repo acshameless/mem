@@ -9,6 +9,7 @@ MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 [[ "$MAJOR" -ge 24 ]] || { echo "Node.js 24+ required, found $(node -v)"; exit 1; }
 
 bash "$ROOT/scripts/configure-model.sh"
+bash "$ROOT/scripts/install-cli.sh"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   bash "$ROOT/scripts/install-hook.sh"

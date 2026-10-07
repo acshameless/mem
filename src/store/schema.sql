@@ -161,6 +161,9 @@ CREATE TABLE IF NOT EXISTS memory_units (
   source_session TEXT,
   created_at TEXT,
   updated_at TEXT,
+  use_count INTEGER DEFAULT 0,
+  positive_feedback INTEGER DEFAULT 0,
+  negative_feedback INTEGER DEFAULT 0,
   supersedes_id INTEGER,
   superseded_by INTEGER
 );

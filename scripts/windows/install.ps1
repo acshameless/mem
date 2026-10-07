@@ -24,6 +24,8 @@ if ($Force) { $hookArgs.Force = $true }
 
 & (Join-Path $PSScriptRoot 'install-mcp.ps1') -RepoPath $RepoPath
 
+& (Join-Path $PSScriptRoot 'install-cli.ps1') -RepoPath $RepoPath
+
 if (-not $SkipModel) {
   & (Join-Path $PSScriptRoot 'configure-model.ps1')
 }
