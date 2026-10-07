@@ -38,6 +38,9 @@ import { embedTexts } from '../embed/embed.ts';
 import { EMBEDDING_PRESETS } from '../embed/presets.ts';
 import { LLM_PRESETS } from '../distill/presets.ts';
 import { checkLlm } from '../distill/check.ts';
+import { runAcceptance } from '../acceptance/run.ts';
+import { decide } from '../decide/provider.ts';
+import { loadDecisionConfig } from '../core/config.ts';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync as readFile } from 'node:fs';
 import { join } from 'node:path';
@@ -1033,6 +1036,33 @@ switch (command) {
     };
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+    break;
+  }
+  case 'acceptance': {
+    const db = open();
+    const timeoutArg = args.indexOf('--timeout');
+    const code = await runAcceptance(db, {
+      check: args.includes('--check'),
+      timeoutMs: timeoutArg >= 0 ? Number(args[timeoutArg + 1]) * 1000 : undefined,
+    });
+    db.close();
+    if (code !== 0) process.exitCode = code;
+    break;
+  }
+  case 'decide': {
+    const question = args.join(' ');
+    const labelsIndex = args.indexOf('--labels');
+    if (!question || labelsIndex < 0) {
+      console.log('memctl decide <question> --labels a,b,...');
+      break;
+    }
+    const questionText = args.slice(0, labelsIndex).join(' ');
+    const labels = String(args[labelsIndex + 1] ?? '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean);
+    const result = await decide(loadDecisionConfig(), { question: questionText, labels });
+    console.log(`${result.label}  probability=${result.probability.toFixed(3)}`);
     break;
   }
   case 'forget':

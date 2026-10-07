@@ -18,6 +18,14 @@ export interface MemConfig {
   sources?: { genericJsonl?: { dir?: string } };
   embedding?: Partial<EmbeddingConfig>;
   injection?: Partial<InjectionConfig>;
+  decision?: Partial<DecisionConfig>;
+}
+
+export interface DecisionConfig {
+  provider: 'heuristic' | 'jev';
+  baseUrl: string;
+  model: string;
+  apiKey: string;
 }
 
 export interface InjectionConfig {
@@ -151,5 +159,15 @@ export function loadInjectionConfig(): InjectionConfig {
     ),
     useEmbeddings: injection.useEmbeddings === true,
     preCompact: injection.preCompact === true,
+  };
+}
+
+export function loadDecisionConfig(): DecisionConfig {
+  const decision = loadConfig().decision ?? {};
+  return {
+    provider: decision.provider === 'jev' ? 'jev' : 'heuristic',
+    baseUrl: typeof decision.baseUrl === 'string' ? decision.baseUrl : '',
+    model: typeof decision.model === 'string' ? decision.model : 'jev',
+    apiKey: typeof decision.apiKey === 'string' ? decision.apiKey : '',
   };
 }
