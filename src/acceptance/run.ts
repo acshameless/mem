@@ -7,6 +7,7 @@ import { dirname } from 'node:path';
 import { ingestHookAttachments } from '../ingest/attachments.ts';
 import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
 import { ingestSessionDir } from '../ingest/sessions.ts';
+import { correlateSessions } from '../ingest/correlate.ts';
 
 // Re-read one session from disk. This makes acceptance deterministic and
 // independent of the daemon version that is currently running.
@@ -22,6 +23,7 @@ function reingestSession(db: DatabaseSync, sessionId: string): void {
     }
   }
   try {
+    correlateSessions(db);
     ingestHookAttachments(db);
     updateSessionLifecycle(db);
   } catch {
@@ -191,7 +193,25 @@ export async function runAcceptance(
       const found = db
         .prepare('SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1')
         .get(`%${marker}%`) as { session_id: string } | undefined;
-      if (found) reingestSession(db, found.session_id);
+      if (found) {
+        // Correlation and TaskComplete can arrive a moment after the session.
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          reingestSession(db, found.session_id);
+          const row = db
+            .prepare(
+              `SELECT s.hook_task_id, s.lifecycle,
+                      (SELECT count(*) FROM hook_events h WHERE h.task_id = s.hook_task_id) events
+               FROM sessions s WHERE s.session_id = ?`
+            )
+            .get(found.session_id) as {
+            hook_task_id: string | null;
+            lifecycle: string | null;
+            events: number;
+          };
+          if (row.hook_task_id && row.events > 0 && row.lifecycle === 'completed') break;
+          await (options.sleep ?? ((ms: number) => new Promise((resolve) => setTimeout(resolve, ms))))(2000);
+        }
+      }
       steps.push(...verifySession(db, marker));
     } else {
       steps.push({
