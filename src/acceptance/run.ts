@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DatabaseSync } from 'node:sqlite';
 import { memHome } from '../core/paths.ts';
@@ -30,7 +30,7 @@ export function verifySession(db: DatabaseSync, marker: string): AcceptanceStep[
   const session = db
     .prepare(
       `SELECT session_id, hook_task_id, lifecycle, messages_path
-       FROM sessions WHERE prompt LIKE ? ORDER BY started_at DESC LIMIT 1`
+       FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1`
     )
     .get(`%${marker}%`) as
     | { session_id: string; hook_task_id: string | null; lifecycle: string | null; messages_path: string | null }
@@ -107,14 +107,36 @@ async function waitForSession(
   marker: string,
   timeoutMs: number,
   sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-): Promise<boolean> {
+): Promise<{ found: boolean; seenInRaw: boolean }> {
   const deadline = Date.now() + timeoutMs;
+  let seenInRaw = false;
+  let lastNotice = 0;
   while (Date.now() < deadline) {
-    const found = count(db, 'SELECT count(*) c FROM sessions WHERE prompt LIKE ?', `%${marker}%`);
-    if (found > 0) return true;
+    const found = count(
+      db,
+      'SELECT count(*) c FROM sessions WHERE prompt LIKE ? COLLATE NOCASE',
+      `%${marker}%`
+    );
+    if (found > 0) return { found: true, seenInRaw };
+    try {
+      const dir = join(memHome(), 'raw', 'hooks');
+      for (const name of readdirSync(dir)) {
+        if (!name.endsWith('.jsonl')) continue;
+        if (readFileSync(join(dir, name), 'utf8').includes(marker)) {
+          seenInRaw = true;
+          break;
+        }
+      }
+    } catch {
+      // The raw directory may not exist yet.
+    }
+    if (Date.now() - lastNotice > 20000) {
+      lastNotice = Date.now();
+      console.log(`  still waiting (${Math.round((deadline - Date.now()) / 1000)}s left). Send the prompt in a NEW Cline task.`);
+    }
     await sleep(2000);
   }
-  return false;
+  return { found: false, seenInRaw };
 }
 
 export interface AcceptanceOptions {
@@ -134,27 +156,43 @@ export async function runAcceptance(
     const marker = `MEM-ACCEPT-${nonce()}`;
     console.log('');
     console.log('== Step 1: basic turn ==');
-    console.log('Open VS Code. Start a NEW Cline task in any workspace.');
-    console.log(`Send this prompt:  ${marker}。请只回复 OK。`);
-    console.log(`Waiting up to ${Math.round((options.timeoutMs ?? 180000) / 1000)}s for the session...`);
-    if (await waitForSession(db, marker, options.timeoutMs ?? 180000, options.sleep)) {
+    console.log('This tool cannot press keys. You must send the prompt in VS Code.');
+    console.log('1. Open VS Code and Cline.');
+    console.log('2. Start a NEW task.');
+    console.log(`3. Paste and send exactly:  ${marker}。请只回复 OK。`);
+    console.log(`Waiting up to ${Math.round((options.timeoutMs ?? 180000) / 1000)}s...`);
+    const wait1 = await waitForSession(db, marker, options.timeoutMs ?? 180000, options.sleep);
+    if (wait1.found) {
       steps.push(...verifySession(db, marker));
     } else {
       steps.push({
         id: 'session',
         title: 'Cline session captured',
         status: 'fail',
-        detail: `timeout: no session with ${marker}`,
+        detail: wait1.seenInRaw
+          ? `hook event found in raw/hooks, but the database has no session (check the daemon)`
+          : `no hook event and no session for ${marker}: the prompt was not sent in Cline, or hooks did not fire`,
       });
     }
 
+    if (!wait1.found) {
+      steps.push({
+        id: 'attachment',
+        title: 'image attachment stored',
+        status: 'skip',
+        detail: 'skipped because step 1 failed',
+      });
+    } else {
     const attachMarker = `MEM-ATTACH-${nonce()}`;
     console.log('');
     console.log('== Step 2: attachment ==');
-    console.log(`Start a NEW task, attach one image, send:  ${attachMarker}。描述这张图。`);
-    if (await waitForSession(db, attachMarker, options.timeoutMs ?? 180000, options.sleep)) {
+    console.log('1. Start a NEW Cline task.');
+    console.log('2. Attach one image.');
+    console.log(`3. Paste and send exactly:  ${attachMarker}。描述这张图。`);
+    const wait2 = await waitForSession(db, attachMarker, options.timeoutMs ?? 180000, options.sleep);
+    if (wait2.found) {
       const session = db
-        .prepare('SELECT session_id FROM sessions WHERE prompt LIKE ? ORDER BY started_at DESC LIMIT 1')
+        .prepare('SELECT session_id FROM sessions WHERE prompt LIKE ? COLLATE NOCASE ORDER BY started_at DESC LIMIT 1')
         .get(`%${attachMarker}%`) as { session_id: string } | undefined;
       const attachments = session
         ? count(db, 'SELECT count(*) c FROM attachments WHERE session_id = ?', session.session_id)
@@ -170,8 +208,11 @@ export async function runAcceptance(
         id: 'attachment',
         title: 'image attachment stored',
         status: 'fail',
-        detail: 'timeout',
+        detail: wait2.seenInRaw
+          ? 'hook event found, but the database has no session (check the daemon)'
+          : 'no hook event: the attachment prompt was not sent',
       });
+    }
     }
   }
 

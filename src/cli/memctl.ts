@@ -38,7 +38,9 @@ import { embedTexts } from '../embed/embed.ts';
 import { EMBEDDING_PRESETS } from '../embed/presets.ts';
 import { LLM_PRESETS } from '../distill/presets.ts';
 import { checkLlm } from '../distill/check.ts';
+import { bootstrapEmbedding, type Runner } from '../embed/bootstrap.ts';
 import { runAcceptance } from '../acceptance/run.ts';
+import { spawn } from 'node:child_process';
 import { decide } from '../decide/provider.ts';
 import { loadDecisionConfig } from '../core/config.ts';
 import { execFileSync } from 'node:child_process';
@@ -1063,6 +1065,53 @@ switch (command) {
       .filter(Boolean);
     const result = await decide(loadDecisionConfig(), { question: questionText, labels });
     console.log(`${result.label}  probability=${result.probability.toFixed(3)}`);
+    break;
+  }
+  case 'embedding-install': {
+    const config = loadEmbeddingConfig();
+    const effective = {
+      ...config,
+      enabled: true,
+      provider: 'local' as const,
+      baseUrl: config.baseUrl || 'http://127.0.0.1:11434/v1',
+      model: config.model || 'embeddinggemma-2',
+    };
+    if (config.provider !== 'local' || !config.enabled) {
+      const stored = loadConfig();
+      stored.embedding = { ...EMBEDDING_PRESETS.local, ...stored.embedding, ...effective };
+      saveConfig(stored);
+      console.log('embedding set to local EmbeddingGemma 2');
+    }
+    const cliRunner: Runner = (command, commandArgs, runnerOptions) =>
+      new Promise((resolve, reject) => {
+        const child = spawn(command, commandArgs, {
+          stdio: runnerOptions?.detach ? 'ignore' : 'pipe',
+          detached: runnerOptions?.detach === true,
+        });
+        if (runnerOptions?.detach) {
+          child.unref();
+          resolve({ code: 0, stdout: '' });
+          return;
+        }
+        let stdout = '';
+        child.stdout?.on('data', (chunk) => {
+          stdout += chunk;
+        });
+        child.on('error', reject);
+        child.on('close', (code) =>
+          code === 0 ? resolve({ code: 0, stdout }) : reject(new Error(`${command} exit ${code}`))
+        );
+      });
+    const result = await bootstrapEmbedding(effective, { runner: cliRunner });
+    for (const step of result.steps) console.log(`  ${step}`);
+    if (!result.ok) {
+      console.error(`embedding bootstrap failed: ${result.guidance ?? 'unknown'}`);
+      process.exitCode = 1;
+      break;
+    }
+    const { embedTexts } = await import('../embed/embed.ts');
+    const [vector] = await embedTexts(effective, ['mem embedding probe'], undefined, 'query');
+    console.log(`probe ok: dimensions=${vector?.length ?? 0}`);
     break;
   }
   case 'forget':

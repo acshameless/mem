@@ -8,6 +8,7 @@ param(
   [string]$RepoUrl = $env:MEM_REPO_URL,
   [string]$PackageUrl = $env:MEM_PACKAGE_URL,
   [switch]$SkipModel,
+  [switch]$SkipEmbedding,
   [switch]$SkipService,
   [switch]$WithReviewReminder,
   [switch]$Force
@@ -72,6 +73,11 @@ if ($SkipService) { $args.SkipService = $true }
 if ($WithReviewReminder) { $args.WithReviewReminder = $true }
 if ($Force) { $args.Force = $true }
 & (Join-Path $RepoPath 'scripts\windows\install.ps1') @args
+
+if (-not $SkipEmbedding) {
+  Write-Host 'preparing local EmbeddingGemma 2 (skip with -SkipEmbedding)...'
+  & node (Join-Path $RepoPath 'src\cli\memctl.ts') embedding-install
+}
 
 Write-Host ''
 Write-Host 'Done. Restart VS Code and check Cline Settings > Hooks / MCP Servers.'

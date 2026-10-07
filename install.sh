@@ -128,6 +128,10 @@ if [[ "${MEM_DRY_RUN:-0}" == "1" ]]; then
   exit 0
 fi
 install_platform
+if [[ "${MEM_SKIP_EMBEDDING:-0}" != "1" ]]; then
+  log "preparing local EmbeddingGemma 2 (skip with MEM_SKIP_EMBEDDING=1)"
+  node "$PWD/src/cli/memctl.ts" embedding-install || log "embedding bootstrap skipped"
+fi
 node "$PWD/src/cli/memctl.ts" status || true
 echo
 echo "Done. Restart VS Code and check Cline Settings > Hooks / MCP Servers."

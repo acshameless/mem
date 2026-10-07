@@ -234,7 +234,8 @@ function captureArtifacts(db: DatabaseSync, sessionDir: string, sessionId: strin
        hash=excluded.hash, size=excluded.size, created_at=excluded.created_at`
   );
   for (const file of files) {
-    const relpath = relative(sessionDir, file);
+    // Always store POSIX-style relative paths, also on Windows.
+    const relpath = relative(sessionDir, file).split('\\').join('/');
     if (known.has(relpath)) continue;
     const stat = statSync(file);
     if (!stat.isFile() || stat.size > 5 * 1024 * 1024) continue;

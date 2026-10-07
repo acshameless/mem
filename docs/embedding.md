@@ -7,6 +7,18 @@ enabled; `memctl embed` / `memctl semantic` work independently.
 
 ## Local first (recommended)
 
+The installers prepare EmbeddingGemma 2 automatically on macOS, Linux, and
+Windows. The command is:
+
+```bash
+memctl embedding-install     # check/start Ollama, pull embeddinggemma-2, verify dimensions
+```
+
+Skip it at install time with `MEM_SKIP_EMBEDDING=1` (macOS/Linux) or
+`-SkipEmbedding` (Windows). The bootstrap writes the local preset into
+`~/.llm-memory/config.json` and fails with an install hint when Ollama is
+missing.
+
 ```bash
 # Ollama
 ollama pull embeddinggemma-2        # or: ollama pull embeddinggemma (check `ollama list`)
