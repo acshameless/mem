@@ -48,5 +48,6 @@ test('path scoring selects the successful trajectory and feeds skill drafts', ()
   const [group] = listPaths(db);
   assert.equal(group.best_session_id, 'path_good');
   assert.equal(group.session_ids.length, 3);
+  assert.equal(group.best_steps, 2, 'efficiency data is stored with the best path');
   db.close();
 });

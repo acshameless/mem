@@ -37,6 +37,7 @@ import { embedPendingTurns, semanticSearch } from '../embed/embed.ts';
 import { embedTexts } from '../embed/embed.ts';
 import { EMBEDDING_PRESETS } from '../embed/presets.ts';
 import { LLM_PRESETS } from '../distill/presets.ts';
+import { checkLlm } from '../distill/check.ts';
 import { execFileSync } from 'node:child_process';
 import { readdirSync, readFileSync as readFile } from 'node:fs';
 import { join } from 'node:path';
@@ -529,12 +530,14 @@ function runPaths(): void {
     rebuildPaths(db);
   }
   const rows = listPaths(db, limitArg ? Number(limitArg) : 50);
-  console.log('score  best session           members  goal');
+  console.log('score  best session           members  steps  goal');
   for (const row of rows) {
     console.log(
       `${row.score.toFixed(2)}   ${String(row.best_session_id ?? '-').padEnd(21)} ${String(
         row.session_ids.length
-      ).padStart(4)}     ${String(row.goal).replace(/\s+/g, ' ').slice(0, 70)}`
+      ).padStart(4)}  ${String(row.best_steps ?? 0).padStart(5)}  ${String(row.goal)
+        .replace(/\s+/g, ' ')
+        .slice(0, 60)}`
     );
   }
   console.log(`${rows.length} path group(s)`);
@@ -834,11 +837,37 @@ function runEmbeddingPreset(): void {
   console.log('check: memctl embed --check');
 }
 
-function runLlmPreset(): void {
+async function runLlm(): Promise<void> {
+  const sub = args[0] ?? 'preset';
+  if (sub === 'check') {
+    const config = loadDistillConfig();
+    const result = await checkLlm(config);
+    console.log(`model   ${result.model}`);
+    console.log(`latency ${result.latencyMs}ms`);
+    console.log(`json    ${result.ok ? 'ok' : `FAILED: ${result.error}`}`);
+    if (result.sample) console.log(`sample  ${result.sample.replace(/\s+/g, ' ')}`);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+  if (sub === 'model') {
+    const name = args[1];
+    if (!name) {
+      console.error('usage: memctl llm model <name>');
+      process.exit(2);
+    }
+    const config = loadConfig();
+    config.distill = { ...loadDistillConfig(), model: name };
+    saveConfig(config);
+    console.log(`llm model set to ${name}`);
+    console.log('check: memctl llm check');
+    return;
+  }
   const name = args[1];
   const preset = name ? LLM_PRESETS[name] : undefined;
   if (!preset) {
-    console.log(`memctl llm preset <${Object.keys(LLM_PRESETS).join('|')}>`);
+    console.log(
+      `memctl llm preset <${Object.keys(LLM_PRESETS).join('|')}> | llm model <name> | llm check`
+    );
     return;
   }
   const config = loadConfig();
@@ -852,7 +881,7 @@ function runLlmPreset(): void {
   console.log(`  provider ${config.distill.provider}`);
   console.log(`  baseUrl  ${config.distill.baseUrl}`);
   console.log(`  model    ${config.distill.model}`);
-  console.log('check: memctl distill --dry-run --limit 1');
+  console.log('check: memctl llm check');
 }
 
 async function runSemantic(): Promise<void> {
@@ -983,6 +1012,27 @@ switch (command) {
     });
     break;
   }
+  case 'ui': {
+    const portArg = args.indexOf('--port');
+    const port = portArg >= 0 ? Number(args[portArg + 1]) : 8787;
+    const { startUi } = await import('../ui/server.ts');
+    const db = open();
+    const ui = await startUi(db, { port });
+    console.log(`mem UI  http://127.0.0.1:${ui.port}`);
+    console.log('press Ctrl+C to stop');
+    const shutdown = () => {
+      ui.close();
+      try {
+        db.close();
+      } catch {
+        // Already closed.
+      }
+      process.exit(0);
+    };
+    process.on('SIGINT', shutdown);
+    process.on('SIGTERM', shutdown);
+    break;
+  }
   case 'forget':
     runForget();
     break;
@@ -999,7 +1049,7 @@ switch (command) {
     runEmbeddingPreset();
     break;
   case 'llm':
-    runLlmPreset();
+    await runLlm();
     break;
   case 'semantic':
     await runSemantic();

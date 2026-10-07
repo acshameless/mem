@@ -20,7 +20,7 @@ mem must help the user and the LLM in later tasks.
 | Trajectory | Status | Storage | Gap |
 |---|---|---|---|
 | User text | Covered | `hook_events`, `turns(kind=text)` | None |
-| User attachments and images | Partial | raw hook payload keeps references | Image bytes are not copied to blobs. The session parser ignores image blocks. |
+| User attachments and images | Covered | `attachments` + blobs | Image and file bytes are stored. Hook data URLs and paths are stored. |
 | LLM text | Covered | `turns(kind=text)` | None |
 | LLM thinking | Covered | `turns(kind=thinking)` | The distill bundle uses a short form only. |
 | Tool calls | Covered | `tool_calls` | None |
@@ -30,7 +30,7 @@ mem must help the user and the LLM in later tasks.
 | Skill use | Partial | `tool_calls` for `use_skill` | Outcome tracking is manual. |
 | Plan and Act mode | Partial | The prompt wrapper holds the mode | No structured mode field. |
 | Approval and denial clicks | Missing | Not stored | Cline 4.x does not write these events to `messages.json`. mem cannot save data that the host does not write. |
-| Checkpoints and file state | Partial | Tool parameters and results | Checkpoint objects are not copied. |
+| Checkpoints and file state | Covered | `artifacts` + blobs | Extra session files (checkpoints) are stored. Limit: 5MB per file. |
 | Cancellation | Covered | `sessions.lifecycle=cancelled` | None |
 | Unknown abort | Covered | `sessions.lifecycle=aborted_unknown` | None |
 | Context compaction | Partial | `archive/` | The continuity card is not validated in a live long session. |
@@ -83,11 +83,12 @@ subagents, and remote hosts have gaps.
 
 ### Part 2: Crystallize the best path
 
-Status: weak.
+Status: improving.
 
-The distiller now receives the tool trajectory. The session summary records
-decisions and lessons. But mem does not score paths. mem does not compare two
-paths with the same goal. Skill drafts do not require a successful outcome.
+mem groups sessions by goal. mem scores each path. The score uses lifecycle,
+tool failures, user corrections, and step efficiency. mem picks the best path.
+Skill drafts receive the best path. The weights are not tested on real data.
+mem does not compare different goals.
 
 ### Part 3: Help the user and the LLM
 

@@ -332,6 +332,7 @@ CREATE TABLE IF NOT EXISTS paths (
   session_ids_json TEXT NOT NULL,
   best_session_id TEXT,
   score REAL,
+  best_steps INTEGER,
   updated_at TEXT
 );
 

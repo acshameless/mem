@@ -63,6 +63,10 @@ export function openDb(path: string): DatabaseSync {
       tryExec(db, `ALTER TABLE session_cards ADD COLUMN ${name} ${type}`);
     }
   }
+  const pathColumns = db.prepare('PRAGMA table_info(paths)').all() as Array<{ name: string }>;
+  if (!pathColumns.some((column) => column.name === 'best_steps')) {
+    tryExec(db, 'ALTER TABLE paths ADD COLUMN best_steps INTEGER');
+  }
   // Fill segments before the segmented triggers exist, so no trigger deletes
   // rows from an index that was never built.
   try {

@@ -6,6 +6,7 @@ export interface PathGroup {
   session_ids: string[];
   best_session_id: string | null;
   score: number;
+  best_steps: number | null;
   updated_at: string;
 }
 
@@ -88,17 +89,53 @@ export function rebuildPaths(db: DatabaseSync): number {
   }
   db.prepare('DELETE FROM paths').run();
   const insert = db.prepare(
-    `INSERT INTO paths (goal_key, goal, session_ids_json, best_session_id, score, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`
+    `INSERT INTO paths (goal_key, goal, session_ids_json, best_session_id, score, best_steps, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`
   );
   const now = new Date().toISOString();
   let stored = 0;
   for (const [key, group] of groups) {
-    const scored = group.sessions
-      .map((sessionId) => ({ sessionId, score: scoreSession(db, sessionId) }))
+    const stepsOf = (sessionId: string) =>
+      (
+        db
+          .prepare('SELECT count(*) c FROM tool_calls WHERE session_id = ?')
+          .get(sessionId) as { c: number }
+      ).c;
+    const raw = group.sessions.map((sessionId) => ({
+      sessionId,
+      score: scoreSession(db, sessionId),
+      steps: stepsOf(sessionId),
+      lifecycle:
+        (
+          db
+            .prepare('SELECT lifecycle FROM sessions WHERE session_id = ?')
+            .get(sessionId) as { lifecycle: string | null } | undefined
+        )?.lifecycle ?? 'unknown',
+    }));
+    const minSteps = Math.max(
+      1,
+      Math.min(...raw.filter((item) => item.steps > 0).map((item) => item.steps), Number.MAX_SAFE_INTEGER)
+    );
+    const scored = raw
+      .map((item) => {
+        // Step efficiency matters only for successful paths. Weight: 0.05 max.
+        const efficiency =
+          item.lifecycle === 'completed' && item.steps > 0
+            ? 0.05 * (minSteps / item.steps)
+            : 0;
+        return { ...item, score: Math.min(1, Number((item.score + efficiency).toFixed(3))) };
+      })
       .sort((a, b) => b.score - a.score);
     const best = scored[0];
-    insert.run(key, group.goal, JSON.stringify(group.sessions), best.sessionId, best.score, now);
+    insert.run(
+      key,
+      group.goal,
+      JSON.stringify(group.sessions),
+      best.sessionId,
+      best.score,
+      best.steps,
+      now
+    );
     stored += 1;
   }
   return stored;

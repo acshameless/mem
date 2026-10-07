@@ -27,6 +27,9 @@ memctl report                 # 周报：采纳率、stale 单元
 memctl sources                # cline / codex / generic-jsonl
 memctl import                 # 全量/增量导入 hooks + sessions + codex + generic
 memctl watch                  # 前台跑 daemon（等价 npm run memd）
+memctl hooks [dir]            # 9 个 hook 的安装/可执行/最近触发检查
+memctl paths [--rebuild]      # 轨迹分组、评分、最优路径（含步骤数）
+memctl ui [--port 8787]       # 本地 Web UI（浏览器，跨平台）
 ```
 
 ## 会话与搜索
@@ -102,6 +105,9 @@ memctl embedding preset local|lmstudio|google|vertex|openai
 memctl embed --check                   # 验证端点，打印维度/耗时
 memctl embed --limit 200               # 批量向量化待处理 turns
 memctl semantic "查询"                  # 余弦检索
+memctl llm preset local|deepseek|openai # 蒸馏模型预设（默认 local）
+memctl llm model <name>                 # 切换本地模型名
+memctl llm check                        # JSON 一致性 + 延迟体检
 ```
 
 ## 自动蒸馏

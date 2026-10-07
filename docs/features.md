@@ -16,6 +16,8 @@
 | 工具耗时 | PostToolUse `executionTimeMs/success` 合并进 tool_calls | `src/ingest/tool_durations.ts` |
 | 大输出归档 | >8KB 工具结果写内容寻址 blob，DB 存 2KB 预览 + hash | `src/core/blobs.ts` |
 | PreCompact 归档 | 压缩前复制 contextJson/contextRaw 到 `archive/<session>/<ts>/` | `src/hooks/pre_compact.ts` |
+| 附件与图片 | 会话 image/file 块 + hook attachments（data URL/路径）→ blob + `attachments` 表 | `src/ingest/attachments.ts`、`sessions.ts` |
+| Checkpoint/文件状态 | 会话目录额外文件（checkpoints 等）→ blob + `artifacts` 表（≤5MB/文件） | `sessions.ts` |
 | 多来源 | Cline、Codex CLI（rollout JSONL）、通用 JSONL | `src/ingest/codex.ts`、`src/ingest/generic.ts` |
 
 ## 2. 存储与索引（Store）
@@ -50,6 +52,9 @@
 | 审核 | `memctl units approve|reject|edit|merge|pin` | `src/core/units.ts` |
 | 反馈 | `mem_feedback`（useful +0.05 / wrong −0.15，低于 0.2 降级） | 同上 |
 | 衰减 | `memctl decay --days 14`，无注入使用则 −0.05 | 同上 |
+| 最优路径 | 按 goal 分组、生命周期/工具失败/用户纠正/步骤效率评分，`paths` 表 + `memctl paths` | `src/core/trajectory.ts` |
+| 本地 Web UI | `memctl ui`，浏览器管理 units/skills/paths/tasks/search | `src/ui/server.ts` |
+| 本地 LLM 默认 | 蒸馏默认 local（Ollama，`qwen3:8b`），`memctl llm model/check` | `src/distill/presets.ts`、`check.ts` |
 | profile | `TASTE-vN.md` 版本化快照 + diff | `src/profile/build.ts`、`src/profile/diff.ts` |
 | 技能结晶 | procedure/重复工具序列 → `SKILL.md` → `~/.cline/skills` | `src/skills/build.ts` |
 
