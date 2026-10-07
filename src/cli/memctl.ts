@@ -18,6 +18,7 @@ import { activateSkill, draftSkill, recordSkillOutcome } from '../skills/build.t
 import { exportStore, importStore } from '../core/portable.ts';
 import { redactRawStore, scanStore } from '../core/scan.ts';
 import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
+import { runTui } from '../tui/review.ts';
 import { buildProfile, profilesDir, writeProfileSnapshot } from '../profile/build.ts';
 import { lineDiff } from '../profile/diff.ts';
 import { listAdapters } from '../adapters/index.ts';
@@ -478,7 +479,7 @@ function runScan(): void {
 }
 
 function runTaskPrefs(): void {
-  const sub = args[0] ?? 'list';
+  const sub = args[0] === 'tasks' || !args[0] ? 'list' : args[0];
   const db = open();
   if (sub === 'on' || sub === 'off' || sub === 'capture-on' || sub === 'capture-off') {
     const taskId = args[1];
@@ -841,6 +842,18 @@ switch (command) {
   case 'tasks':
     runTaskPrefs();
     break;
+  case 'tui': {
+    const db = open();
+    runTui(db);
+    process.on('exit', () => {
+      try {
+        db.close();
+      } catch {
+        // Already closed.
+      }
+    });
+    break;
+  }
   case 'forget':
     runForget();
     break;
