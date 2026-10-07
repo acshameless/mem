@@ -144,3 +144,38 @@ the exact output.
 | 12 Portability and privacy | | | |
 | 13 UI actions | | | |
 | 14 Windows parity | | | |
+
+## Remaining hook scenarios
+
+Three hooks need a special scenario. Run one scenario at a time.
+
+### TaskResume
+
+1. Start a Cline task. Send a long request.
+2. Close the VS Code window while the task runs.
+3. Open VS Code again. Resume the task.
+4. Check: `memctl hooks` shows a new `TaskResume` time.
+
+### Notification
+
+1. Start a Cline task. Ask for a terminal command that needs approval.
+2. Wait for the Cline approval prompt.
+3. Check: `memctl hooks` shows a new `Notification` time.
+
+### PreCompact
+
+PreCompact fires when the conversation context is full. A large output file
+alone does not trigger it. Use one of these methods:
+
+1. Many turns in one task.
+   - Send: `请读取 docs/reports/MEM-COMPACT-DLCCN2.md，每次 200 行，读完一段就总结。`
+   - Repeat for many turns. Keep one task open.
+2. Small context window.
+   - Set a model with a small context window in Cline.
+   - Run the same long request.
+3. Check:
+   - `memctl hooks` shows a new `PreCompact` time.
+   - `memctl archive` shows one entry.
+   - `~/.llm-memory/archive/<session>/<ts>/` contains context files.
+   - With `injection.preCompact: true`, the session `.messages.json` holds a
+     `<memory version="1" source="precompact">` block after compaction.
