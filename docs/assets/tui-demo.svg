@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="560" viewBox="0 0 920 560" role="img" aria-label="mem TUI animated demo">
+  <rect width="920" height="560" rx="14" fill="#0d1117" stroke="#30363d"/>
+  <rect width="920" height="38" rx="14" fill="#161b22"/>
+  <circle cx="24" cy="19" r="6" fill="#ff5f56"/>
+  <circle cx="46" cy="19" r="6" fill="#ffbd2e"/>
+  <circle cx="68" cy="19" r="6" fill="#27c93f"/>
+  <text x="460" y="24" text-anchor="middle" font-family="SFMono-Regular, Consolas, monospace" font-size="13" fill="#8b949e">mem — TUI demo</text>
+
+  <g font-family="SFMono-Regular, Consolas, 'Liberation Mono', 'PingFang SC', 'Microsoft YaHei', monospace" font-size="15" fill="#c9d1d9">
+    <!-- frame 1: command -->
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;1;1;0;0" keyTimes="0;0.02;0.17;0.20;1" dur="16s" repeatCount="indefinite"/>
+      <text x="40" y="120" fill="#7ee787">$ memctl tui</text>
+      <rect x="196" y="107" width="10" height="17" fill="#58a6ff">
+        <animate attributeName="opacity" values="1;0" dur="1s" repeatCount="indefinite"/>
+      </rect>
+      <text x="40" y="170" fill="#8b949e">starting mem TUI...</text>
+    </g>
+
+    <!-- frame 2: dashboard -->
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.20;0.23;0.52;0.55;1" dur="16s" repeatCount="indefinite"/>
+      <text x="40" y="90" fill="#58a6ff">mem TUI</text>
+      <text x="130" y="90" fill="#c9d1d9">[Dashboard]  Sessions  Search  Candidates  Active  Skills  Tasks  Metrics  Config</text>
+      <text x="40" y="118" fill="#30363d">──────────────────────────────────────────────────────────────────</text>
+      <text x="40" y="146" fill="#7ee787">▶ Sessions 13</text>
+      <text x="200" y="146" fill="#8b949e">turns 105   cards 13</text>
+      <text x="60" y="170">Memory units   active 3   candidate 1   rejected 4</text>
+      <text x="60" y="194">Injections 4   skills 0</text>
+      <text x="60" y="218">Auto-distill ON   quiet 15m   scan 5m   max 3/cycle</text>
+      <text x="60" y="242" fill="#8b949e">recent 2026-10-06T16:50  1791305458822_k2kbz  ~/Github/mem</text>
+      <text x="40" y="270" fill="#30363d">──────────────────────────────────────────────────────────────────</text>
+      <text x="40" y="298" fill="#d29922">ready</text>
+      <text x="40" y="326" fill="#8b949e">keys: 1-9/Tab screens   j/k rows   q quit</text>
+    </g>
+
+    <!-- frame 3: candidates + approve -->
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0;0" keyTimes="0;0.55;0.58;0.92;0.95;1" dur="16s" repeatCount="indefinite"/>
+      <text x="40" y="90" fill="#58a6ff">mem TUI</text>
+      <text x="130" y="90" fill="#c9d1d9">Dashboard  Sessions  Search  [Candidates]  Active  Skills  Tasks  Metrics  Config</text>
+      <text x="40" y="118" fill="#30363d">──────────────────────────────────────────────────────────────────</text>
+      <text x="40" y="146" fill="#7ee787">▶ [8] taste  conf=0.50</text>
+      <text x="60" y="170">测试候选记忆  (person)</text>
+      <text x="40" y="198">[5] taste  conf=0.75</text>
+      <text x="60" y="222">用户偏好极简、无解释的直接输出，只列结果不解释。  (person)</text>
+      <text x="40" y="250" fill="#30363d">──────────────────────────────────────────────────────────────────</text>
+      <text x="40" y="278" fill="#7ee787">unit 8 approved</text>
+      <text x="40" y="306" fill="#8b949e">keys: a approve   r reject   e edit   p pin   f forget   q quit</text>
+      <rect x="880" y="270" width="10" height="17" fill="#58a6ff">
+        <animate attributeName="opacity" values="1;0" dur="1s" repeatCount="indefinite"/>
+      </rect>
+    </g>
+  </g>
+
+  <text x="460" y="530" text-anchor="middle" font-family="SFMono-Regular, Consolas, monospace" font-size="12" fill="#484f58">mem v0.4 — capture · distill · review · inject · skills</text>
+</svg>

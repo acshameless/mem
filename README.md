@@ -1,208 +1,204 @@
 # mem
 
-Personal LLM memory for Cline (VS Code). The system records conversations,
-indexes them locally, and later retrieves and injects relevant context.
+**Personal LLM memory for Cline (VS Code)** · 给 Cline 的个人 LLM 记忆系统
 
-- macOS setup: `docs/operations.md`
-- Windows setup: `docs/windows.md` (PowerShell hooks, Task Scheduler)
-- One-click install (all platforms): `docs/one-click.md`
+[English](#english) · [中文](#中文)
 
-## Requirements
+![mem TUI demo](docs/assets/tui-demo.svg)
 
-- Node.js 24 or later. Node 24 provides `node:sqlite` with FTS5 and runs
-  TypeScript files directly. Phase 1 has no npm dependencies.
+---
 
-## Phase 1 CLI
+## English
 
-```bash
-MEM_DB=var/memory.db node src/cli/memctl.ts import
-MEM_DB=var/memory.db node src/cli/memctl.ts status
-MEM_DB=var/memory.db node src/cli/memctl.ts sessions
-MEM_DB=var/memory.db node src/cli/memctl.ts search nonce
-MEM_DB=var/memory.db node src/cli/memctl.ts tools 10
+### What it does
+
+mem records every Cline conversation, keeps the raw data locally, distills durable
+taste / preferences / procedures, and injects a fixed-structure memory block into
+future prompts. One person owns one local store. No account, no cloud database.
+
+### Features
+
+- **Capture** — Cline hooks + background daemon; raw JSONL, full transcripts,
+  content-addressed blobs for large tool output, PreCompact archives.
+- **Retrieval** — SQLite FTS5, CJK segmented index, optional embedding rerank.
+- **Injection** — fixed `<memory>` block (taste / preferences / pitfalls /
+  project / facts / procedures / cards / past) with a configurable budget.
+- **Taste** — LLM distillation → candidates → manual review → active profile,
+  with versioned `TASTE.md` snapshots.
+- **Skills** — repeated procedures crystallize into `SKILL.md` files under
+  `~/.cline/skills`, with outcome tracking.
+- **Sources** — Cline, Codex CLI, generic JSONL.
+- **Privacy** — local-only store, secret scan/redact, per-task off switch
+  (`@nomem`, `memctl off <taskId>`), `mem_forget` with re-ingest denylist.
+- **Ops** — MCP tools, metrics/report, export/import, full TUI, one-click
+  installers for macOS, Linux and Windows.
+
+### Architecture
+
+```text
+Cline hooks ─▶ raw store ─▶ daemon ─▶ SQLite ─▶ distill ─▶ review ─▶ memory block ─▶ next prompt
+             (JSONL/blobs)          (sessions/cards/units/injections)   (active units)
 ```
 
-`MEM_DB` overrides the database path. The default is
-`~/.llm-memory/db/memory.db`. `CLINE_DATA_DIR` overrides the Cline data root.
+### Quick start
 
-## Daemon
-
-```bash
-MEM_DB=var/memory.db node src/daemon/memd.ts
-```
-
-The daemon imports once at startup, then polls every 2 seconds for new hook
-events and session files, and runs a full resync every 5 minutes. Polling is
-used instead of `fs.watch` for stability across platforms and file systems.
-
-## MCP server
+macOS / Linux:
 
 ```bash
-bash scripts/install-mcp.sh
+curl -fsSL https://raw.githubusercontent.com/acshameless/mem/main/install.sh \
+  | MEM_REPO_URL=https://github.com/acshameless/mem.git bash
 ```
 
-The script registers a `mem` MCP server in
-`~/.cline/data/settings/cline_mcp_settings.json`. Cline gets two read-only
-tools:
+Windows (PowerShell):
 
-- `mem_recall` - full-text search over captured conversations
-- `mem_status` - store statistics
+```powershell
+$env:MEM_PACKAGE_URL = 'https://github.com/acshameless/mem/archive/refs/heads/main.zip'
+irm https://raw.githubusercontent.com/acshameless/mem/main/install.ps1 | iex
+```
 
-## Injection hook
+From source:
 
 ```bash
-bash scripts/install-hook.sh
+git clone https://github.com/acshameless/mem.git ~/Github/mem
+cd ~/Github/mem && bash install.sh
 ```
 
-The script replaces `~/Documents/Cline/Hooks/UserPromptSubmit` with a small
-shim that runs `src/hooks/user_prompt_submit.ts`. On each prompt the hook
-searches the local store and returns a fixed-structure `<memory>` block as
-`contextModification`. The block is empty when nothing matches.
-
-## Auto-start (launchd)
-
-```bash
-bash scripts/install-launchd.sh
-```
-
-Installs and starts `com.shameless.mem.daemon`. Stop the manual daemon first.
-Logs go to `~/.llm-memory/logs/`. Remove it with
-`bash scripts/uninstall-launchd.sh`.
-
-## Retrieval quality
-
-- Segmented CJK index (`turns_fts_seg`): Chinese text is indexed per character
-  and queried with character bigrams.
-- Near-duplicate turns are removed from the injected block.
-- At most two turns per session enter the block.
-- Same-workspace turns rank before cross-workspace turns.
-- Session cards summarize each task: goal, outcome, tools, files, and errors.
-
-## Taste distillation
-
-```bash
-bash scripts/configure-model.sh          # writes ~/.llm-memory/config.json (0600)
-node src/cli/memctl.ts distill --dry-run --limit 2
-node src/cli/memctl.ts distill --limit 5
-node src/cli/memctl.ts units list --status candidate
-node src/cli/memctl.ts units approve <id>
-node src/cli/memctl.ts units reject <id>
-```
-
-Distillation redacts secrets, sends one session bundle to the configured
-model, and stores candidates only. Candidate units never reach the context.
-Active units render in the `<taste>` and `<preferences>` sections.
-
-## Auto distillation (opt-in)
-
-```bash
-node src/cli/memctl.ts auto status
-node src/cli/memctl.ts auto on --quiet 15 --scan 5 --max 3
-node src/cli/memctl.ts auto off
-```
-
-When enabled, the daemon distills a session after `quietMinutes` without
-updates, checks every `scanMinutes`, and processes at most `maxPerCycle`
-sessions per cycle. Changed sessions are re-distilled; duplicate candidates
-are skipped. Candidates still require manual review.
-
-The distiller also receives the current active units. It marks candidates as
-`new`, `duplicate`, or `supersedes`. Duplicates are dropped. A `supersedes`
-candidate stores the target id and, when approved, retires the old unit.
-
-## Profile snapshots
-
-```bash
-node src/cli/memctl.ts profile          # print the current TASTE profile
-node src/cli/memctl.ts profile write    # write a versioned snapshot
-```
-
-Snapshots live in `~/.llm-memory/profiles/` as `TASTE-vN.md` plus the latest
-`TASTE.md`. Approving or rejecting a unit updates the profile automatically.
-
-```bash
-node src/cli/memctl.ts profile list
-node src/cli/memctl.ts profile show 2
-node src/cli/memctl.ts profile diff 1 2
-```
-
-## Operations
+The installer checks or installs Node 24, installs the `memctl` / `memd` CLI,
+configures the model key, installs hooks and the MCP server, and starts the
+daemon (launchd on macOS, systemd user units on Linux, Task Scheduler on
+Windows). Re-running the same command upgrades in place.
 
 ### TUI
 
 ```bash
-memctl tui            # full app: dashboard, sessions, search, review, skills, tasks, metrics, config
-memctl tui --review   # review-only TUI
+memctl tui            # full app
+memctl tui --review   # review only
 ```
 
-Screens switch with `1-9` or `Tab`. Row navigation `j/k` (or arrows).
-Actions per screen: `a` approve/activate, `r` reject/retire, `p/u` pin/unpin,
-`e` edit, `f` forget, `o/x` skill outcome, `n` draft skill, `d` distill
-session, `x/i/s` export/import/scan on Config, `m/c/i` task toggles. `/` starts
-search input, `q` quits. Non-TTY environments print a text summary.
+| # | Screen | Actions |
+|---|---|---|
+| 1 | Dashboard | read-only overview |
+| 2 | Sessions | `d` distill, `f` forget |
+| 3 | Search | `/` query |
+| 4 | Candidates | `a` approve, `r` reject, `e` edit, `p` pin, `f` forget |
+| 5 | Active | `r` retire, `p/u` pin, `e` edit, `f` forget |
+| 6 | Skills | `n` draft, `a` activate, `r` reject, `o/x` outcome |
+| 7 | Tasks | `m` memory, `c` capture, `i` add task |
+| 8 | Metrics | read-only |
+| 9 | Config | `a` auto-distill, `e` quiet window, `x` export, `i` import, `s` scan |
+
+Keys: `1-9` / `Tab` switch, `j/k` move, `Enter` submit, `Esc` cancel, `q` quit.
+
+### Docs
+
+- [One-click deployment](docs/one-click.md)
+- [Operations runbook](docs/operations.md)
+- [Windows guide](docs/windows.md)
+- [Windows deploy & verify](docs/windows-deploy.md)
+- [Phase 0 hook contract](docs/phase0-contract.md)
+
+### Development
 
 ```bash
-memctl metrics                        # injection and unit metrics
-memctl review [--notify]              # pending candidates
-memctl sources                        # cline / codex / generic adapters
-memctl report                         # weekly quality report
-memctl archive                        # recent PreCompact archives
-memctl units edit <id> --statement "..."   # edit / merge / pin
-memctl units merge <keepId> <mergeId>
-memctl units pin <id>
-memctl skills list | draft | approve <id>
-memctl export --out <dir> [--raw]     # portable backup
-memctl import <dir>
-memctl card <sessionId>               # LLM session summary
-memctl scan [--redact-raw --yes]      # secret scan
-memctl off <taskId> | on <taskId>     # per-task memory switch
-memctl capture-off <taskId>
-memctl tasks
-memctl forget session <id> --yes
-memctl forget unit <id> --yes
-bash scripts/install-precompact-hook.sh     # archive pre-compaction context
-bash scripts/install-review-reminder.sh     # daily 10:00 notification
+npm test          # 35 tests, Node 24, no dependencies
+bash scripts/package.sh
+git tag v0.4.0 && git push origin v0.4.0   # triggers the release workflow
 ```
 
-## Optional embedding search
+---
 
-Add an `embedding` block to `~/.llm-memory/config.json`, then:
+## 中文
 
-```bash
-node src/cli/memctl.ts embed --limit 200   # embed pending turns
-node src/cli/memctl.ts semantic "query"    # cosine search
-```
+### 它做什么
 
-Embedding search is optional and off by default. The prompt hook keeps using
-the fast FTS path. Generic sources can be added with a
-`sources.genericJsonl.dir` config entry (one JSONL file per session, lines
-`{"role":"user","content":"...","ts":"..."}`).
+mem 记录你和 Cline 的全部对话，把原始数据保存在本地，蒸馏出可复用的
+沟通偏好 / 工作习惯 / 流程，并在之后的对话里注入固定结构的记忆块。
+一个人一份本地存储，不需要账号，不使用云端数据库。
 
-## Tests
+### 功能
 
-```bash
-npm test
-```
+- **采集**：Cline hooks + 后台 daemon；原始 JSONL、完整会话、大工具输出走
+  blob 存储、PreCompact 压缩前归档。
+- **检索**：SQLite FTS5 + 中文分段索引，可选 embedding 重排。
+- **注入**：固定结构 `<memory>` 块（taste / preferences / pitfalls /
+  project / facts / procedures / cards / past），预算可配置。
+- **Taste**：LLM 蒸馏 → 候选 → 人工审核 → 激活，profile 以 `TASTE.md`
+  版本化保存。
+- **技能结晶**：重复出现的流程生成 `SKILL.md`，安装到 `~/.cline/skills`，
+  并记录成功/失败成效。
+- **来源**：Cline、Codex CLI、通用 JSONL。
+- **隐私**：本地存储、密钥扫描与清除、单任务关闭（`@nomem`、
+  `memctl off <taskId>`）、`mem_forget` 删除并防止重新摄入。
+- **运维**：MCP 工具、指标与周报、导出/导入、全功能 TUI、
+  macOS / Linux / Windows 一键部署。
 
-The test ingests the Phase 0 fixtures into a temporary SQLite database and
-checks events, sessions, turns, tool calls, correlation, and FTS search.
-
-## Layout
+### 架构
 
 ```text
-src/cli/        memctl commands
-src/core/       paths and shared helpers
-src/ingest/     hook and session ingest, correlation
-src/store/      schema and database
-phase0/         live hook validation kit
-tests/          fixtures and tests
-docs/           Phase 0 contract and report
+Cline hooks ─▶ 原始存储 ─▶ daemon ─▶ SQLite ─▶ 蒸馏 ─▶ 审核 ─▶ 记忆块 ─▶ 下一次对话
+             (JSONL/blob)        (sessions/cards/units/injections) (active units)
 ```
 
-## Status
+### 快速开始
 
-- Phase 0: complete. See `docs/phase0-report.md`.
-- v0.2: capture, daemon, MCP recall, injection, session cards, taste
-  distillation, auto-distill, semantic dedupe/supersede, profile snapshots,
-  injection metrics, review reminders, PreCompact archive.
-- Operations runbook: `docs/operations.md`.
+macOS / Linux：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/acshameless/mem/main/install.sh \
+  | MEM_REPO_URL=https://github.com/acshameless/mem.git bash
+```
+
+Windows（PowerShell）：
+
+```powershell
+$env:MEM_PACKAGE_URL = 'https://github.com/acshameless/mem/archive/refs/heads/main.zip'
+irm https://raw.githubusercontent.com/acshameless/mem/main/install.ps1 | iex
+```
+
+源码安装：
+
+```bash
+git clone https://github.com/acshameless/mem.git ~/Github/mem
+cd ~/Github/mem && bash install.sh
+```
+
+安装脚本会检查或安装 Node 24、安装 `memctl` / `memd` 命令、配置模型 key、
+安装 hooks 与 MCP、启动后台服务（macOS 用 launchd、Linux 用 systemd user、
+Windows 用计划任务）。重复执行同一条命令即可原地升级。
+
+### TUI
+
+```bash
+memctl tui            # 完整应用
+memctl tui --review   # 只看候选审核
+```
+
+| # | 屏幕 | 操作 |
+|---|---|---|
+| 1 | Dashboard | 只读概览 |
+| 2 | Sessions | `d` 蒸馏、`f` 删除 |
+| 3 | Search | `/` 输入查询 |
+| 4 | Candidates | `a` 通过、`r` 拒绝、`e` 编辑、`p` 置顶、`f` 忘记 |
+| 5 | Active | `r` 退休、`p/u` 置顶、`e` 编辑、`f` 忘记 |
+| 6 | Skills | `n` 生成、`a` 激活、`r` 拒绝、`o/x` 成效 |
+| 7 | Tasks | `m` memory、`c` capture、`i` 添加任务 |
+| 8 | Metrics | 只读 |
+| 9 | Config | `a` 自动蒸馏、`e` 静默窗口、`x` 导出、`i` 导入、`s` 密钥扫描 |
+
+按键：`1-9` / `Tab` 切屏，`j/k` 移动，`Enter` 提交，`Esc` 取消，`q` 退出。
+
+### 文档
+
+- [一键部署](docs/one-click.md)
+- [运维手册](docs/operations.md)
+- [Windows 指南](docs/windows.md)
+- [Windows 部署验证](docs/windows-deploy.md)
+- [Phase 0 hook 合约](docs/phase0-contract.md)
+
+### 开发
+
+```bash
+npm test          # 35 项测试，Node 24，零依赖
+bash scripts/package.sh
+git tag v0.4.0 && git push origin v0.4.0   # 触发发布工作流
+```
