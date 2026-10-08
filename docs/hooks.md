@@ -93,6 +93,18 @@ TRAJECTORY（工具序列，含 use_skill 与 MCP 调用）
 1. `TaskStart` 会话简报（目前由 UserPromptSubmit 承担）。
 2. `PreToolUse` 危险命令拦截（Cline 支持 `cancel`）与工具级即时提示。
 
+## 六、契约校验（防 Cline 升级漂移）
+
+```bash
+memctl hooks --validate
+```
+
+- 扫描 `hook_events` 中的全部 payload，按 9 个事件的 schema 校验。
+- 事件缺字段、类型错误、未知事件 → 逐条 `VIOLATION` 输出，退出码 1。
+- golden fixtures：`tests/fixtures/contract/hook-events.jsonl`（每个事件一条真实形状）。
+- 测试同时覆盖「删除任一必需字段必须报错」与输出契约（`shouldContinue` 必须被拒绝）。
+- Cline 升级后先跑一次 `memctl hooks --validate`，可立刻发现 schema 漂移。
+
 ## 六、PreCompact 注入：设计与启用
 
 默认关闭。开启方式：

@@ -21,6 +21,7 @@ import { listTaskPrefs, setTaskPref } from '../core/prefs.ts';
 import { runTui } from '../tui/review.ts';
 import { updateSessionLifecycle } from '../ingest/lifecycle.ts';
 import { defaultHooksDir, hooksDoctor } from '../core/hooks_doctor.ts';
+import { validateStoredContracts } from '../core/hook_contract.ts';
 import { ingestHookAttachments } from '../ingest/attachments.ts';
 import { listPaths, rebuildPaths } from '../core/trajectory.ts';
 import { runApp } from '../tui/app.ts';
@@ -508,6 +509,17 @@ function runScan(): void {
 function runHooks(): void {
   const dir = args[0] && !args[0].startsWith('-') ? args[0] : defaultHooksDir();
   const db = open();
+  if (args.includes('--validate')) {
+    const report = validateStoredContracts(db);
+    console.log(`checked ${report.checked} hook event(s)`);
+    for (const row of report.violations.slice(0, 20)) {
+      console.log(`VIOLATION ${row.event} task=${row.task_id ?? '-'}: ${row.errors.join('; ')}`);
+    }
+    console.log(`${report.violations.length} violation(s)`);
+    db.close();
+    if (report.violations.length > 0) process.exitCode = 1;
+    return;
+  }
   const rows = hooksDoctor(db, dir);
   console.log(`hooks dir  ${dir}`);
   console.log('event             installed  last seen             count  health');

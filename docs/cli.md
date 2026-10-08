@@ -28,6 +28,7 @@ memctl sources                # cline / codex / generic-jsonl
 memctl import                 # 全量/增量导入 hooks + sessions + codex + generic
 memctl watch                  # 前台跑 daemon（等价 npm run memd）
 memctl hooks [dir]            # 9 个 hook 的安装/可执行/最近触发检查
+memctl hooks --validate       # 扫描 hook_events，检测 Cline 契约漂移
 memctl paths [--rebuild]      # 轨迹分组、评分、最优路径（含步骤数）
 memctl ui [--port 8787]       # 本地 Web UI（浏览器，跨平台）
 ```

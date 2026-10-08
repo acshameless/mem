@@ -114,6 +114,10 @@ test('memctl units, profile, paths and hooks commands', async () => {
   const hooks = await runCli(['hooks'], env);
   assert.equal(hooks.code, 0);
   assert.match(hooks.stdout, /hooks ok|hook\(s\) are missing/);
+
+  const validate = await runCli(['hooks', '--validate'], env);
+  assert.equal(validate.code, 0);
+  assert.match(validate.stdout, /0 violation/);
 });
 
 test('memctl tasks, export, import, forget and config commands', async () => {
